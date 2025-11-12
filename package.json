@@ -74,7 +74,9 @@
         "test": "jest",
         "start": "npm run server",
         "server": "tsx watch --clear-screen=false scripts/cli.ts server",
-        "client": "tsx scripts/cli.ts client"
+        "client": "tsx scripts/cli.ts client",
+        "x32:server": "tsx src/x32-server/index.ts",
+        "x32:test": "tsx test/x32-connection.test.ts"
     },
     "dependencies": {
         "ajv": "^8.17.1",
@@ -86,6 +88,7 @@
         "eventsource-parser": "^3.0.0",
         "express": "^5.0.1",
         "express-rate-limit": "^7.5.0",
+        "osc": "^2.4.4",
         "pkce-challenge": "^5.0.0",
         "raw-body": "^3.0.0",
         "zod": "^3.23.8",
