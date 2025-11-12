@@ -48,8 +48,40 @@ async function testConnection() {
         console.log(`  - IP Address: ${status.ipAddress}`);
         console.log(`  - Server Name: ${status.serverName}\n`);
 
-        // Test 4: Disconnect
-        console.log('Test 4: Disconnecting...');
+        // Test 4: Get Channel Parameter
+        console.log('Test 4: Getting channel 1 fader...');
+        const fader = await connection.getChannelParameter<number>(1, 'mix/fader');
+        console.log(`✓ Channel 1 fader = ${fader} (${(fader * 100).toFixed(1)}%)\n`);
+
+        // Test 5: Get Channel Name
+        console.log('Test 5: Getting channel 1 name...');
+        const name = await connection.getChannelParameter<string>(1, 'config/name');
+        console.log(`✓ Channel 1 name = "${name}"\n`);
+
+        // Test 6: Set Channel Name
+        console.log('Test 6: Setting channel 1 name to "MCP Test"...');
+        await connection.setChannelParameter(1, 'config/name', 'MCP Test');
+        const newName = await connection.getChannelParameter<string>(1, 'config/name');
+        console.log(`✓ Channel 1 name updated to "${newName}"\n`);
+
+        // Test 7: Set Channel Fader
+        console.log('Test 7: Setting channel 1 fader to 0.75...');
+        await connection.setChannelParameter(1, 'mix/fader', 0.75);
+        const newFader = await connection.getChannelParameter<number>(1, 'mix/fader');
+        console.log(`✓ Channel 1 fader set to ${newFader} (${(newFader * 100).toFixed(1)}%)\n`);
+
+        // Test 8: Get Parameter by Address
+        console.log('Test 8: Getting /ch/01/mix/on...');
+        const channelOn = await connection.getParameter<number>('/ch/01/mix/on');
+        console.log(`✓ Channel 1 on/off = ${channelOn} (${channelOn === 1 ? 'ON' : 'MUTED'})\n`);
+
+        // Test 9: Restore original name
+        console.log('Test 9: Restoring original channel name...');
+        await connection.setChannelParameter(1, 'config/name', name);
+        console.log(`✓ Channel 1 name restored to "${name}"\n`);
+
+        // Test 10: Disconnect
+        console.log('Test 10: Disconnecting...');
         await connection.disconnect();
         console.log('✓ Disconnection successful\n');
 
