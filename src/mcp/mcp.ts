@@ -35,7 +35,7 @@ import {
     CompleteRequestResourceTemplate,
     assertCompleteRequestPrompt,
     assertCompleteRequestResourceTemplate
-} from '../../types.js';
+} from '../../spec.types.js';
 import { Completable, CompletableDef } from './completable.js';
 import { UriTemplate, Variables } from './shared/uriTemplate.js';
 import { RequestHandlerExtra } from './shared/protocol.js';

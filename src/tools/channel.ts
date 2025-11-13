@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { McpServer } from '../mcp/mcp.js';
-import { CallToolResult } from '../spec.types.js';
+import { CallToolResult } from '../types/index.js';
 import { X32Connection } from '../services/x32-connection.js';
 
 /**
@@ -13,19 +13,21 @@ import { X32Connection } from '../services/x32-connection.js';
  * Set channel fader level
  */
 function registerChannelSetVolumeTool(server: McpServer, connection: X32Connection): void {
-    server.tool(
+    server.registerTool(
         'channel_set_volume',
-        'Set the fader level (volume) for a specific input channel on the X32/M32 mixer. This controls the channel fader position which affects the signal level sent to the main mix.',
-        {
-            channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
-            level: z.number().min(0).max(1).describe('Fader level from 0.0 (minimum/off) to 1.0 (maximum/unity gain)')
-        },
         {
             title: 'Set Channel Fader Volume',
-            readOnlyHint: false,
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: true
+            description: 'Set the fader level (volume) for a specific input channel on the X32/M32 mixer. This controls the channel fader position which affects the signal level sent to the main mix.',
+            inputSchema: {
+                channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
+                level: z.number().min(0).max(1).describe('Fader level from 0.0 (minimum/off) to 1.0 (maximum/unity gain)')
+            },
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async ({ channel, level }): Promise<CallToolResult> => {
             if (!connection.connected) {
@@ -70,19 +72,21 @@ function registerChannelSetVolumeTool(server: McpServer, connection: X32Connecti
  * Set channel preamp gain
  */
 function registerChannelSetGainTool(server: McpServer, connection: X32Connection): void {
-    server.tool(
+    server.registerTool(
         'channel_set_gain',
-        'Set the preamp gain for a specific input channel on the X32/M32 mixer. This controls the input gain stage before the channel processing.',
-        {
-            channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
-            gain: z.number().min(0).max(1).describe('Preamp gain level from 0.0 to 1.0 (typically represents -12dB to +60dB range)')
-        },
         {
             title: 'Set Channel Preamp Gain',
-            readOnlyHint: false,
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: true
+            description: 'Set the preamp gain for a specific input channel on the X32/M32 mixer. This controls the input gain stage before the channel processing.',
+            inputSchema: {
+                channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
+                gain: z.number().min(0).max(1).describe('Preamp gain level from 0.0 to 1.0 (typically represents -12dB to +60dB range)')
+            },
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async ({ channel, gain }): Promise<CallToolResult> => {
             if (!connection.connected) {
@@ -98,7 +102,7 @@ function registerChannelSetGainTool(server: McpServer, connection: X32Connection
             }
 
             try {
-                await connection.setChannelParameter(channel, 'preamp/gain', gain);
+                await connection.setChannelParameter(channel, 'head/gain', gain);
                 return {
                     content: [
                         {
@@ -124,22 +128,24 @@ function registerChannelSetGainTool(server: McpServer, connection: X32Connection
 
 /**
  * Register channel_mute tool
- * Mute/unmute a channel
+ * Mute or unmute a channel
  */
 function registerChannelMuteTool(server: McpServer, connection: X32Connection): void {
-    server.tool(
+    server.registerTool(
         'channel_mute',
-        'Mute or unmute a specific input channel on the X32/M32 mixer. When muted, the channel signal is completely cut from the mix.',
         {
-            channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
-            muted: z.boolean().describe('Mute state: true to mute the channel, false to unmute')
-        },
-        {
-            title: 'Mute/Unmute Channel',
-            readOnlyHint: false,
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: true
+            title: 'Channel Mute Control',
+            description: 'Mute or unmute a specific input channel on the X32/M32 mixer. This controls the channel on/off state.',
+            inputSchema: {
+                channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
+                muted: z.boolean().describe('True to mute the channel, false to unmute')
+            },
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async ({ channel, muted }): Promise<CallToolResult> => {
             if (!connection.connected) {
@@ -155,7 +161,9 @@ function registerChannelMuteTool(server: McpServer, connection: X32Connection): 
             }
 
             try {
-                await connection.setChannelParameter(channel, 'mix/on', muted ? 0 : 1);
+                // X32 uses inverted logic: 0 = muted, 1 = unmuted
+                const onValue = muted ? 0 : 1;
+                await connection.setChannelParameter(channel, 'mix/on', onValue);
                 return {
                     content: [
                         {
@@ -181,22 +189,24 @@ function registerChannelMuteTool(server: McpServer, connection: X32Connection): 
 
 /**
  * Register channel_solo tool
- * Solo a channel
+ * Solo or unsolo a channel
  */
 function registerChannelSoloTool(server: McpServer, connection: X32Connection): void {
-    server.tool(
+    server.registerTool(
         'channel_solo',
-        'Solo or unsolo a specific input channel on the X32/M32 mixer. When soloed, only soloed channels are heard in the monitor system.',
         {
-            channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
-            solo: z.boolean().describe('Solo state: true to solo the channel, false to unsolo')
-        },
-        {
-            title: 'Solo/Unsolo Channel',
-            readOnlyHint: false,
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: true
+            title: 'Channel Solo Control',
+            description: 'Solo or unsolo a specific input channel on the X32/M32 mixer. This routes the channel to the solo bus for isolated monitoring.',
+            inputSchema: {
+                channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
+                solo: z.boolean().describe('True to solo the channel, false to unsolo')
+            },
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async ({ channel, solo }): Promise<CallToolResult> => {
             if (!connection.connected) {
@@ -212,7 +222,6 @@ function registerChannelSoloTool(server: McpServer, connection: X32Connection): 
             }
 
             try {
-                // Note: solo parameter might be different - this is a placeholder implementation
                 await connection.setChannelParameter(channel, 'solo', solo ? 1 : 0);
                 return {
                     content: [
@@ -242,18 +251,20 @@ function registerChannelSoloTool(server: McpServer, connection: X32Connection): 
  * Get complete channel state
  */
 function registerChannelGetStateTool(server: McpServer, connection: X32Connection): void {
-    server.tool(
+    server.registerTool(
         'channel_get_state',
-        'Retrieve the complete current state of a specific input channel including fader level, mute status, preamp gain, and other key parameters.',
-        {
-            channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32')
-        },
         {
             title: 'Get Channel State',
-            readOnlyHint: true,
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: true
+            description: 'Retrieve the complete state of a specific input channel including fader level, mute status, solo status, and gain settings.',
+            inputSchema: {
+                channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async ({ channel }): Promise<CallToolResult> => {
             if (!connection.connected) {
@@ -269,19 +280,20 @@ function registerChannelGetStateTool(server: McpServer, connection: X32Connectio
             }
 
             try {
-                // Get key channel parameters
-                const [fader, on, gain, name] = await Promise.all([
+                const [fader, on, solo, gain, name] = await Promise.all([
                     connection.getChannelParameter(channel, 'mix/fader'),
                     connection.getChannelParameter(channel, 'mix/on'),
-                    connection.getChannelParameter(channel, 'preamp/gain'),
-                    connection.getChannelParameter(channel, 'config/name').catch(() => 'N/A')
+                    connection.getChannelParameter(channel, 'solo'),
+                    connection.getChannelParameter(channel, 'head/gain'),
+                    connection.getChannelParameter(channel, 'config/name')
                 ]);
 
-                const state = [
+                const output = [
                     `Channel ${channel} State:`,
-                    `  Name: ${name}`,
+                    `  Name: ${name || '(unnamed)'}`,
                     `  Fader: ${fader} (${Math.round(Number(fader) * 100)}%)`,
                     `  Muted: ${Number(on) === 0 ? 'Yes' : 'No'}`,
+                    `  Solo: ${Number(solo) === 1 ? 'Yes' : 'No'}`,
                     `  Preamp Gain: ${gain}`
                 ].join('\n');
 
@@ -289,7 +301,7 @@ function registerChannelGetStateTool(server: McpServer, connection: X32Connectio
                     content: [
                         {
                             type: 'text',
-                            text: state
+                            text: output
                         }
                     ]
                 };
@@ -313,21 +325,23 @@ function registerChannelGetStateTool(server: McpServer, connection: X32Connectio
  * Set specific EQ band parameters
  */
 function registerChannelSetEqBandTool(server: McpServer, connection: X32Connection): void {
-    server.tool(
+    server.registerTool(
         'channel_set_eq_band',
-        'Set EQ parameters for a specific band on a channel. The X32/M32 typically has 4-band parametric EQ per channel.',
         {
-            channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
-            band: z.number().min(1).max(4).describe('EQ band number (1-4, where 1=high freq, 4=low freq typically)'),
-            parameter: z.enum(['f', 'g', 'q']).describe('EQ parameter: "f" for frequency, "g" for gain, "q" for Q factor'),
-            value: z.number().describe('Parameter value (frequency in Hz, gain in dB, Q factor as ratio)')
-        },
-        {
-            title: 'Set Channel EQ Band Parameter',
-            readOnlyHint: false,
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: true
+            title: 'Set Channel EQ Band',
+            description: 'Configure a specific EQ band on an input channel. The X32/M32 has 4 parametric EQ bands per channel.',
+            inputSchema: {
+                channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
+                band: z.number().min(1).max(4).describe('EQ band number from 1 to 4'),
+                parameter: z.enum(['f', 'g', 'q']).describe('EQ parameter: f=frequency(Hz), g=gain(dB), q=quality/width'),
+                value: z.number().describe('Parameter value (range depends on parameter type)')
+            },
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async ({ channel, band, parameter, value }): Promise<CallToolResult> => {
             if (!connection.connected) {
@@ -343,13 +357,15 @@ function registerChannelSetEqBandTool(server: McpServer, connection: X32Connecti
             }
 
             try {
-                await connection.setChannelParameter(channel, `eq/${band}/${parameter}`, value);
-                const paramName = parameter === 'f' ? 'frequency' : parameter === 'g' ? 'gain' : 'Q factor';
+                const path = `eq/${band}/${parameter}`;
+                await connection.setChannelParameter(channel, path, value);
+
+                const paramNames = { f: 'frequency', g: 'gain', q: 'Q/width' };
                 return {
                     content: [
                         {
                             type: 'text',
-                            text: `Set channel ${channel} EQ band ${band} ${paramName} to ${value}`
+                            text: `Set channel ${channel} EQ band ${band} ${paramNames[parameter]} to ${value}`
                         }
                     ]
                 };
@@ -358,7 +374,7 @@ function registerChannelSetEqBandTool(server: McpServer, connection: X32Connecti
                     content: [
                         {
                             type: 'text',
-                            text: `Failed to set EQ parameter: ${error instanceof Error ? error.message : String(error)}`
+                            text: `Failed to set EQ band: ${error instanceof Error ? error.message : String(error)}`
                         }
                     ],
                     isError: true
@@ -369,34 +385,27 @@ function registerChannelSetEqBandTool(server: McpServer, connection: X32Connecti
 }
 
 /**
- * Legacy channel tool (kept as low-level fallback)
- * High-level API for channel parameter access
+ * Legacy x32_channel tool for backward compatibility
+ * @deprecated Use semantic channel_* tools instead
  */
-function registerChannelTool(server: McpServer, connection: X32Connection): void {
-    server.tool(
+function registerLegacyChannelTool(server: McpServer, connection: X32Connection): void {
+    server.registerTool(
         'x32_channel',
-        'LOW-LEVEL TOOL: Provides raw access to input channel parameters on X32/M32 mixer (channels 1-32). Consider using semantic tools like channel_set_volume, channel_mute, etc. for common operations. Use this tool only for advanced parameter access not covered by semantic tools.',
         {
-            channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
-            action: z.enum(['get', 'set']).describe('Action to perform: "get" to read current value, "set" to change value'),
-            parameter: z
-                .string()
-                .describe(
-                    'Channel parameter path (e.g., "mix/fader" for channel fader, "config/name" for channel name, "eq/1/f" for EQ band 1 frequency, "comp/thr" for compressor threshold, "mix/01/level" for aux send 1 level)'
-                ),
-            value: z
-                .union([z.string(), z.number()])
-                .optional()
-                .describe(
-                    'New value to set (required when action is "set"). Use 0.0-1.0 for faders, string for names, specific values for EQ/compression parameters'
-                )
-        },
-        {
-            title: 'X32 Channel Control (Low-Level)',
-            readOnlyHint: false,
-            destructiveHint: false, // Depends on action
-            idempotentHint: false,
-            openWorldHint: true
+            title: 'X32 Channel Control (Legacy)',
+            description: '[DEPRECATED - Use semantic channel_* tools instead] Low-level channel parameter access. Provides direct access to channel parameters using OSC paths.',
+            inputSchema: {
+                channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
+                action: z.enum(['get', 'set']).describe('Action to perform: "get" to read current value, "set" to change value'),
+                parameter: z.string().describe('Channel parameter path (e.g., "mix/fader", "config/name", "eq/1/f")'),
+                value: z.union([z.string(), z.number()]).optional().describe('New value to set (required when action is "set")')
+            },
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async ({ channel, action, parameter, value }): Promise<CallToolResult> => {
             if (!connection.connected) {
@@ -418,18 +427,17 @@ function registerChannelTool(server: McpServer, connection: X32Connection): void
                         content: [
                             {
                                 type: 'text',
-                                text: `Channel ${channel} ${parameter} = ${JSON.stringify(result)}`
+                                text: `Channel ${channel} ${parameter}: ${result}`
                             }
                         ]
                     };
                 } else {
-                    // action === 'set'
                     if (value === undefined) {
                         return {
                             content: [
                                 {
                                     type: 'text',
-                                    text: 'Value is required for set action'
+                                    text: 'Value is required when action is "set"'
                                 }
                             ],
                             isError: true
@@ -440,7 +448,7 @@ function registerChannelTool(server: McpServer, connection: X32Connection): void
                         content: [
                             {
                                 type: 'text',
-                                text: `Set channel ${channel} ${parameter} = ${value}`
+                                text: `Set channel ${channel} ${parameter} to ${value}`
                             }
                         ]
                     };
@@ -450,7 +458,7 @@ function registerChannelTool(server: McpServer, connection: X32Connection): void
                     content: [
                         {
                             type: 'text',
-                            text: `Failed to ${action} channel parameter: ${error instanceof Error ? error.message : String(error)}`
+                            text: `Channel operation failed: ${error instanceof Error ? error.message : String(error)}`
                         }
                     ],
                     isError: true
@@ -470,7 +478,5 @@ export function registerChannelTools(server: McpServer, connection: X32Connectio
     registerChannelSoloTool(server, connection);
     registerChannelGetStateTool(server, connection);
     registerChannelSetEqBandTool(server, connection);
-
-    // Keep legacy tool as fallback
-    registerChannelTool(server, connection);
+    registerLegacyChannelTool(server, connection);
 }

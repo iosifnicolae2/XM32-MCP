@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { McpServer } from '../mcp/mcp.js';
-import { CallToolResult } from '../spec.types.js';
+import { CallToolResult } from '../types/index.js';
 import { X32Connection } from '../services/x32-connection.js';
 
 /**
@@ -12,20 +12,22 @@ import { X32Connection } from '../services/x32-connection.js';
  * Register connection_connect tool
  * Establishes connection to X32/M32 mixer
  */
-function registerConnectionConnectTool(server: McpMcpServer, connection: X32Connection): void {
-    server.tool(
+function registerConnectionConnectTool(server: McpServer, connection: X32Connection): void {
+    server.registerTool(
         'connection_connect',
-        'Establishes a connection to an X32 or M32 digital mixing console using the OSC (Open Sound Control) protocol. Use this tool when you need to control mixer functions remotely. The mixer must be powered on and connected to the same network.',
-        {
-            host: z.string().describe('IP address of the X32/M32 mixer on the network (e.g., "192.168.1.100")'),
-            port: z.number().default(10023).describe('OSC port number for communication with the mixer (standard port is 10023)')
-        },
         {
             title: 'Connect to X32/M32 Mixer',
-            readOnlyHint: false,
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: true
+            description: 'Establishes a connection to an X32 or M32 digital mixing console using the OSC (Open Sound Control) protocol. Use this tool when you need to control mixer functions remotely. The mixer must be powered on and connected to the same network.',
+            inputSchema: {
+                host: z.string().describe('IP address of the X32/M32 mixer on the network (e.g., "192.168.1.100")'),
+                port: z.number().default(10023).describe('OSC port number for communication with the mixer (standard port is 10023)')
+            },
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async ({ host, port }): Promise<CallToolResult> => {
             if (connection.connected) {
@@ -69,16 +71,18 @@ function registerConnectionConnectTool(server: McpMcpServer, connection: X32Conn
  * Disconnects from X32/M32 mixer
  */
 function registerConnectionDisconnectTool(server: McpServer, connection: X32Connection): void {
-    server.tool(
+    server.registerTool(
         'connection_disconnect',
-        'Disconnects from the currently connected X32 or M32 digital mixing console. Use this tool to cleanly terminate the OSC connection when mixer control is no longer needed.',
-        {},
         {
             title: 'Disconnect from X32/M32 Mixer',
-            readOnlyHint: false,
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: true
+            description: 'Disconnects from the currently connected X32 or M32 digital mixing console. Use this tool to cleanly terminate the OSC connection when mixer control is no longer needed.',
+            inputSchema: {},
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async (): Promise<CallToolResult> => {
             if (!connection.connected) {
@@ -122,16 +126,18 @@ function registerConnectionDisconnectTool(server: McpServer, connection: X32Conn
  * Retrieves console information from X32/M32 mixer
  */
 function registerConnectionGetInfoTool(server: McpServer, connection: X32Connection): void {
-    server.tool(
+    server.registerTool(
         'connection_get_info',
-        'Retrieves detailed console information from connected X32 or M32 digital mixing console. Returns model name, firmware version, server details, and other system information useful for identifying mixer capabilities and troubleshooting.',
-        {},
         {
             title: 'Get X32/M32 Console Information',
-            readOnlyHint: true,
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: true
+            description: 'Retrieves detailed console information from connected X32 or M32 digital mixing console. Returns model name, firmware version, server details, and other system information useful for identifying mixer capabilities and troubleshooting.',
+            inputSchema: {},
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async (): Promise<CallToolResult> => {
             if (!connection.connected) {
@@ -183,16 +189,18 @@ function registerConnectionGetInfoTool(server: McpServer, connection: X32Connect
  * Retrieves current status from X32/M32 mixer
  */
 function registerConnectionGetStatusTool(server: McpServer, connection: X32Connection): void {
-    server.tool(
+    server.registerTool(
         'connection_get_status',
-        'Retrieves the current operational status of the connected X32 or M32 digital mixing console. Returns connection state, network information, and server details to monitor mixer availability and network configuration.',
-        {},
         {
             title: 'Get X32/M32 Connection Status',
-            readOnlyHint: true,
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: true
+            description: 'Retrieves the current operational status of the connected X32 or M32 digital mixing console. Returns connection state, network information, and server details to monitor mixer availability and network configuration.',
+            inputSchema: {},
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
         },
         async (): Promise<CallToolResult> => {
             if (!connection.connected) {

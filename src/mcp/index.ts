@@ -30,7 +30,7 @@ import {
     type ServerResult,
     SetLevelRequestSchema,
     SUPPORTED_PROTOCOL_VERSIONS
-} from '../../types.js';
+} from '../../spec.types.js';
 import { AjvJsonSchemaValidator } from './validation/ajv-provider.js';
 import type { JsonSchemaType, jsonSchemaValidator } from './validation/types.js';
 
