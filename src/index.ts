@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { Server } from './server/index.js';
-import { StdioServerTransport } from './server/stdio.js';
+import { Server, StdioServerTransport } from './server.js';
 import { X32Connection } from './services/x32-connection.js';
 import {
     registerConnectTool,
