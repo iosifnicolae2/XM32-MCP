@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { Server } from '../server/index.js';
-import { CallToolResult } from '../types.js';
+import { Server } from '../server.js';
+import { CallToolResult } from '../types/index.js';
 import { X32Connection } from '../services/x32-connection.js';
 
 /**
