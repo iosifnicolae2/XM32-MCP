@@ -4,4 +4,5 @@
  */
 export { registerConnectionTools } from './connection.js';
 export { registerChannelTools } from './channel.js';
+export { registerChannelDbTools } from './channel-db.js';
 export { registerParameterTools } from './parameter.js';

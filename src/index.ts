@@ -5,6 +5,7 @@ import { X32Connection } from './services/x32-connection.js';
 import {
     registerConnectionTools,
     registerChannelTools,
+    registerChannelDbTools,
     registerParameterTools
 } from './tools/index.js';
 

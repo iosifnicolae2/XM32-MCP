@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { McpServer } from '../mcp/mcp.js';
 import { CallToolResult } from '../types/index.js';
 import { X32Connection } from '../services/x32-connection.js';
+import { dbToFader, faderToDb, formatDb } from '../utils/db-converter.js';
 
 /**
  * Channel domain tools
@@ -17,10 +18,11 @@ function registerChannelSetVolumeTool(server: McpServer, connection: X32Connecti
         'channel_set_volume',
         {
             title: 'Set Channel Fader Volume',
-            description: 'Set the fader level (volume) for a specific input channel on the X32/M32 mixer. This controls the channel fader position which affects the signal level sent to the main mix.',
+            description: 'Set the fader level (volume) for a specific input channel on the X32/M32 mixer. Supports both linear values (0.0-1.0) and decibel values (-90 to +10 dB). Unity gain is 0 dB or 0.75 linear.',
             inputSchema: {
                 channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
-                level: z.number().min(0).max(1).describe('Fader level from 0.0 (minimum/off) to 1.0 (maximum/unity gain)')
+                value: z.number().describe('Volume value (interpretation depends on unit parameter)'),
+                unit: z.enum(['linear', 'db']).default('linear').describe('Unit of the value: "linear" (0.0-1.0) or "db" (-90 to +10 dB). Default is "linear".')
             },
             annotations: {
                 readOnlyHint: false,
@@ -29,7 +31,7 @@ function registerChannelSetVolumeTool(server: McpServer, connection: X32Connecti
                 openWorldHint: true
             }
         },
-        async ({ channel, level }): Promise<CallToolResult> => {
+        async ({ channel, value, unit = 'linear' }): Promise<CallToolResult> => {
             if (!connection.connected) {
                 return {
                     content: [
@@ -43,12 +45,48 @@ function registerChannelSetVolumeTool(server: McpServer, connection: X32Connecti
             }
 
             try {
-                await connection.setChannelParameter(channel, 'mix/fader', level);
+                let faderValue: number;
+                let dbValue: number;
+
+                if (unit === 'db') {
+                    // Input is in dB
+                    if (value < -90 || value > 10) {
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: `Invalid dB value: ${value}. Must be between -90 and +10 dB.`
+                                }
+                            ],
+                            isError: true
+                        };
+                    }
+                    dbValue = value;
+                    faderValue = dbToFader(value);
+                } else {
+                    // Input is linear
+                    if (value < 0 || value > 1) {
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: `Invalid linear value: ${value}. Must be between 0.0 and 1.0.`
+                                }
+                            ],
+                            isError: true
+                        };
+                    }
+                    faderValue = value;
+                    dbValue = faderToDb(value);
+                }
+
+                await connection.setChannelParameter(channel, 'mix/fader', faderValue);
+
                 return {
                     content: [
                         {
                             type: 'text',
-                            text: `Set channel ${channel} fader to ${level} (${Math.round(level * 100)}%)`
+                            text: `Set channel ${channel} to ${formatDb(dbValue)} (linear: ${faderValue.toFixed(3)})`
                         }
                     ]
                 };
@@ -288,10 +326,11 @@ function registerChannelGetStateTool(server: McpServer, connection: X32Connectio
                     connection.getChannelParameter(channel, 'config/name')
                 ]);
 
+                const faderDb = faderToDb(Number(fader));
                 const output = [
                     `Channel ${channel} State:`,
                     `  Name: ${name || '(unnamed)'}`,
-                    `  Fader: ${fader} (${Math.round(Number(fader) * 100)}%)`,
+                    `  Fader: ${formatDb(faderDb)} (linear: ${Number(fader).toFixed(3)})`,
                     `  Muted: ${Number(on) === 0 ? 'Yes' : 'No'}`,
                     `  Solo: ${Number(solo) === 1 ? 'Yes' : 'No'}`,
                     `  Preamp Gain: ${gain}`
