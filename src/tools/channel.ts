@@ -4,6 +4,7 @@ import { CallToolResult } from '../types/index.js';
 import { X32Connection } from '../services/x32-connection.js';
 import { dbToFader, faderToDb, formatDb } from '../utils/db-converter.js';
 import { getColorValue, getColorName, getAvailableColors } from '../utils/color-converter.js';
+import { parsePan, formatPan, panToPercent } from '../utils/pan-converter.js';
 
 /**
  * Channel domain tools
@@ -565,6 +566,81 @@ function registerChannelSetColorTool(server: McpServer, connection: X32Connectio
 }
 
 /**
+ * Register channel_set_pan tool
+ * Set channel stereo positioning
+ */
+function registerChannelSetPanTool(server: McpServer, connection: X32Connection): void {
+    server.registerTool(
+        'channel_set_pan',
+        {
+            title: 'Set Channel Pan',
+            description: 'Set the stereo pan position for a channel. Accepts percentage (-100 to +100), LR notation (L50, C, R100), or linear values (0.0-1.0).',
+            inputSchema: {
+                channel: z.number().min(1).max(32).describe('Input channel number from 1 to 32'),
+                pan: z.union([z.string(), z.number()]).describe('Pan position: percentage (-100 to +100), LR notation (L50/C/R100), or linear (0.0-1.0)')
+            },
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ channel, pan }): Promise<CallToolResult> => {
+            if (!connection.connected) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: 'Not connected to X32/M32 mixer. Use connection_connect first.'
+                        }
+                    ],
+                    isError: true
+                };
+            }
+
+            try {
+                const panValue = parsePan(pan);
+                if (panValue === null) {
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: `Invalid pan value "${pan}". Use percentage (-100 to +100), LR notation (L50/C/R100), or linear (0.0-1.0).`
+                            }
+                        ],
+                        isError: true
+                    };
+                }
+
+                await connection.setChannelParameter(channel, 'mix/pan', panValue);
+
+                const percent = panToPercent(panValue);
+                const formatted = formatPan(panValue);
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: `Set channel ${channel} pan to ${formatted} (${percent > 0 ? '+' : ''}${percent.toFixed(0)}%)`
+                        }
+                    ]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: `Failed to set channel pan: ${error instanceof Error ? error.message : String(error)}`
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+/**
  * Legacy x32_channel tool for backward compatibility
  * @deprecated Use semantic channel_* tools instead
  */
@@ -660,5 +736,6 @@ export function registerChannelTools(server: McpServer, connection: X32Connectio
     registerChannelSetEqBandTool(server, connection);
     registerChannelSetNameTool(server, connection);
     registerChannelSetColorTool(server, connection);
+    registerChannelSetPanTool(server, connection);
     registerLegacyChannelTool(server, connection);
 }
