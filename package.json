@@ -1,17 +1,17 @@
 {
     "name": "x-m32-mcp-server",
-    "version": "2.1.0",
+    "version": "3.0.0",
     "description": "MCP server for controlling Behringer X32/M32 digital mixing consoles via OSC",
     "license": "MIT",
     "author": "Beomsu Koh",
     "homepage": "https://github.com/GoBeromsu/X32-MCP",
     "bugs": "https://github.com/GoBeromsu/X32-MCP/issues",
-    "type": "module",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/GoBeromsu/X32-MCP.git"
     },
     "main": "dist/index.js",
+    "type": "module",
     "bin": {
         "x-m32-mcp-server": "dist/index.js"
     },
@@ -30,41 +30,7 @@
         "live-sound"
     ],
     "exports": {
-        ".": {
-            "import": "./dist/esm/index.js",
-            "require": "./dist/cjs/index.js"
-        },
-        "./client": {
-            "import": "./dist/esm/client/index.js",
-            "require": "./dist/cjs/client/index.js"
-        },
-        "./server": {
-            "import": "./dist/esm/server/index.js",
-            "require": "./dist/cjs/server/index.js"
-        },
-        "./validation": {
-            "import": "./dist/esm/validation/index.js",
-            "require": "./dist/cjs/validation/index.js"
-        },
-        "./validation/ajv": {
-            "import": "./dist/esm/validation/ajv-provider.js",
-            "require": "./dist/cjs/validation/ajv-provider.js"
-        },
-        "./validation/cfworker": {
-            "import": "./dist/esm/validation/cfworker-provider.js",
-            "require": "./dist/cjs/validation/cfworker-provider.js"
-        },
-        "./*": {
-            "import": "./dist/esm/*",
-            "require": "./dist/cjs/*"
-        }
-    },
-    "typesVersions": {
-        "*": {
-            "*": [
-                "./dist/esm/*"
-            ]
-        }
+        ".": "./dist/index.js"
     },
     "files": [
         "dist"
@@ -72,13 +38,10 @@
     "scripts": {
         "fetch:spec-types": "tsx scripts/fetch-spec-types.ts",
         "typecheck": "tsgo --noEmit",
-        "build": "npm run build:esm && npm run build:cjs",
-        "build:esm": "mkdir -p dist/esm && echo '{\"type\": \"module\"}' > dist/esm/package.json && tsc -p tsconfig.prod.json",
-        "build:esm:w": "npm run build:esm -- -w",
-        "build:cjs": "mkdir -p dist/cjs && echo '{\"type\": \"commonjs\"}' > dist/cjs/package.json && tsc -p tsconfig.cjs.json",
-        "build:cjs:w": "npm run build:cjs -- -w",
+        "build": "tsc -p tsconfig.prod.json",
+        "build:watch": "tsc -p tsconfig.prod.json -w",
         "examples:simple-server:w": "tsx --watch src/examples/server/simpleStreamableHttp.ts --oauth",
-        "prepack": "npm run build:esm && npm run build:cjs",
+        "prepack": "npm run build",
         "lint": "eslint src/ && prettier --check .",
         "lint:fix": "eslint src/ --fix && prettier --write .",
         "check": "npm run typecheck && npm run lint",
@@ -90,6 +53,7 @@
         "x32:test": "tsx test/x32-connection.test.ts"
     },
     "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.22.0",
         "ajv": "^8.17.1",
         "ajv-formats": "^3.0.1",
         "content-type": "^1.0.5",
