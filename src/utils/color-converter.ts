@@ -8,22 +8,22 @@
  * The X32 uses integer values 0-15 for channel colors
  */
 export const X32_COLORS = {
-    OFF: 0,        // Off/Black (no color)
-    RED: 1,        // Red
-    GREEN: 2,      // Green
-    YELLOW: 3,     // Yellow
-    BLUE: 4,       // Blue
-    MAGENTA: 5,    // Magenta
-    CYAN: 6,       // Cyan
-    WHITE: 7,      // White
-    OFF_INV: 8,    // Off Inverted
-    RED_INV: 9,    // Red Inverted
+    OFF: 0, // Off/Black (no color)
+    RED: 1, // Red
+    GREEN: 2, // Green
+    YELLOW: 3, // Yellow
+    BLUE: 4, // Blue
+    MAGENTA: 5, // Magenta
+    CYAN: 6, // Cyan
+    WHITE: 7, // White
+    OFF_INV: 8, // Off Inverted
+    RED_INV: 9, // Red Inverted
     GREEN_INV: 10, // Green Inverted
-    YELLOW_INV: 11,// Yellow Inverted
-    BLUE_INV: 12,  // Blue Inverted
-    MAGENTA_INV: 13,// Magenta Inverted
-    CYAN_INV: 14,  // Cyan Inverted
-    WHITE_INV: 15  // White Inverted
+    YELLOW_INV: 11, // Yellow Inverted
+    BLUE_INV: 12, // Blue Inverted
+    MAGENTA_INV: 13, // Magenta Inverted
+    CYAN_INV: 14, // Cyan Inverted
+    WHITE_INV: 15 // White Inverted
 } as const;
 
 /**
@@ -78,9 +78,7 @@ export function getColorName(value: number): string | null {
  * @returns Array of color names
  */
 export function getAvailableColors(): string[] {
-    return Object.keys(X32_COLORS).map(name =>
-        name.toLowerCase().replace(/_/g, '-')
-    );
+    return Object.keys(X32_COLORS).map(name => name.toLowerCase().replace(/_/g, '-'));
 }
 
 /**

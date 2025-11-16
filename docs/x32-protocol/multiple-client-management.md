@@ -17,12 +17,14 @@ X32 레벨에서 발생하는 변경사항과 동기화를 유지하기 위해�
 `/xremote` 명령을 수신한 후, X32는 다음과 같은 변경사항을 클라이언트에 업데이트합니다:
 
 **전송되는 변경사항:**
+
 - Fader movements (페이더 움직임)
 - Bank change requests (뱅크 변경 요청)
 - Screen updates (화면 업데이트)
 - 모든 파라미터 변경사항
 
 **전송되지 않는 변경사항:**
+
 - 연결된 클라이언트에 직접적인 영향을 주지 않는 변경
 - X32/M32에 엄격히 로컬인 변경사항
 - 예: Standard X32/M32의 view 버튼 중 하나를 누르는 것
@@ -49,11 +51,11 @@ X32 레벨에서 발생하는 변경사항과 동기화를 유지하기 위해�
 
 ```javascript
 // 초기 등록
-send("/xremote");
+send('/xremote');
 
 // 9초마다 갱신
 setInterval(() => {
-  send("/xremote");
+    send('/xremote');
 }, 9000);
 ```
 
@@ -100,11 +102,11 @@ const X32_PORT = 10023;
 
 // /xremote 전송 함수
 function sendXremote() {
-  const buf = osc.toBuffer({
-    address: '/xremote',
-    args: []
-  });
-  client.send(buf, 0, buf.length, X32_PORT, X32_HOST);
+    const buf = osc.toBuffer({
+        address: '/xremote',
+        args: []
+    });
+    client.send(buf, 0, buf.length, X32_PORT, X32_HOST);
 }
 
 // 초기 등록
@@ -115,12 +117,12 @@ setInterval(sendXremote, 9000);
 
 // 업데이트 수신
 client.on('message', (msg, rinfo) => {
-  try {
-    const oscMsg = osc.fromBuffer(msg);
-    console.log('Received:', oscMsg.address, oscMsg.args);
-  } catch (err) {
-    console.error('OSC parse error:', err);
-  }
+    try {
+        const oscMsg = osc.fromBuffer(msg);
+        console.log('Received:', oscMsg.address, oscMsg.args);
+    } catch (err) {
+        console.error('OSC parse error:', err);
+    }
 });
 ```
 
@@ -130,12 +132,12 @@ client.on('message', (msg, rinfo) => {
 
 자세한 내용은 **"Subscribing to X32/M32 Updates"** 단락을 참조하세요.
 
-| 명령 | 설명 | 타임아웃 |
-|------|------|----------|
-| `/subscribe` | 특정 파라미터 구독 | 10초 |
-| `/formatsubscribe` | 포맷 기반 구독 | 10초 |
-| `/batchsubscribe` | 일괄 파라미터 구독 | 10초 |
-| `/meters` | 미터 데이터 구독 | 10초 |
+| 명령               | 설명               | 타임아웃 |
+| ------------------ | ------------------ | -------- |
+| `/subscribe`       | 특정 파라미터 구독 | 10초     |
+| `/formatsubscribe` | 포맷 기반 구독     | 10초     |
+| `/batchsubscribe`  | 일괄 파라미터 구독 | 10초     |
+| `/meters`          | 미터 데이터 구독   | 10초     |
 
 ## 다중 클라이언트 시나리오
 
@@ -144,6 +146,7 @@ client.on('message', (msg, rinfo) => {
 X32/M32는 여러 클라이언트의 동시 연결을 지원합니다.
 
 **시나리오 예시:**
+
 ```
 Client A (iPad)  ──┐
 Client B (PC)    ──┼──> X32/M32 Console
@@ -153,24 +156,26 @@ Client C (Phone) ──┘
 ### 변경사항 전파
 
 1. **Client A**가 채널 1의 페이더를 변경
-   ```
-   Client A → X32: /ch/01/mix/fader ,f 0.75
-   ```
+
+    ```
+    Client A → X32: /ch/01/mix/fader ,f 0.75
+    ```
 
 2. **X32**가 변경사항을 모든 등록된 클라이언트에 전송
-   ```
-   X32 → Client A: /ch/01/mix/fader ,f 0.75
-   X32 → Client B: /ch/01/mix/fader ,f 0.75
-   X32 → Client C: /ch/01/mix/fader ,f 0.75
-   ```
+
+    ```
+    X32 → Client A: /ch/01/mix/fader ,f 0.75
+    X32 → Client B: /ch/01/mix/fader ,f 0.75
+    X32 → Client C: /ch/01/mix/fader ,f 0.75
+    ```
 
 3. **물리적 콘솔**에서 변경 시에도 동일
-   ```
-   [User touches fader on X32]
-   X32 → Client A: /ch/01/mix/fader ,f 0.80
-   X32 → Client B: /ch/01/mix/fader ,f 0.80
-   X32 → Client C: /ch/01/mix/fader ,f 0.80
-   ```
+    ```
+    [User touches fader on X32]
+    X32 → Client A: /ch/01/mix/fader ,f 0.80
+    X32 → Client B: /ch/01/mix/fader ,f 0.80
+    X32 → Client C: /ch/01/mix/fader ,f 0.80
+    ```
 
 ### 동기화 유지
 
@@ -192,26 +197,26 @@ Time    Client A        Client B        Client C
 
 ```typescript
 class X32Connection {
-  private xremoteTimer?: NodeJS.Timeout;
-  
-  startXremote() {
-    this.sendXremote();
-    this.xremoteTimer = setInterval(() => {
-      this.sendXremote();
-    }, 9000); // 9초마다
-  }
-  
-  stopXremote() {
-    if (this.xremoteTimer) {
-      clearInterval(this.xremoteTimer);
-      this.xremoteTimer = undefined;
+    private xremoteTimer?: NodeJS.Timeout;
+
+    startXremote() {
+        this.sendXremote();
+        this.xremoteTimer = setInterval(() => {
+            this.sendXremote();
+        }, 9000); // 9초마다
     }
-  }
-  
-  sendXremote() {
-    const msg = osc.toBuffer({ address: '/xremote', args: [] });
-    this.socket.send(msg, X32_PORT, X32_HOST);
-  }
+
+    stopXremote() {
+        if (this.xremoteTimer) {
+            clearInterval(this.xremoteTimer);
+            this.xremoteTimer = undefined;
+        }
+    }
+
+    sendXremote() {
+        const msg = osc.toBuffer({ address: '/xremote', args: [] });
+        this.socket.send(msg, X32_PORT, X32_HOST);
+    }
 }
 ```
 
@@ -219,20 +224,21 @@ class X32Connection {
 
 ```typescript
 class X32Connection {
-  private lastUpdateTime: number = 0;
-  
-  onMessage(msg: Buffer) {
-    this.lastUpdateTime = Date.now();
-    // 메시지 처리
-  }
-  
-  checkConnection() {
-    const now = Date.now();
-    if (now - this.lastUpdateTime > 15000) { // 15초
-      console.warn('No updates received - connection may be lost');
-      // 재연결 로직
+    private lastUpdateTime: number = 0;
+
+    onMessage(msg: Buffer) {
+        this.lastUpdateTime = Date.now();
+        // 메시지 처리
     }
-  }
+
+    checkConnection() {
+        const now = Date.now();
+        if (now - this.lastUpdateTime > 15000) {
+            // 15초
+            console.warn('No updates received - connection may be lost');
+            // 재연결 로직
+        }
+    }
 }
 ```
 
@@ -240,16 +246,16 @@ class X32Connection {
 
 ```typescript
 class X32Connection {
-  reconnect() {
-    console.log('Reconnecting to X32...');
-    this.stopXremote();
-    
-    // 잠시 대기 후 재시작
-    setTimeout(() => {
-      this.startXremote();
-      console.log('Reconnected to X32');
-    }, 1000);
-  }
+    reconnect() {
+        console.log('Reconnecting to X32...');
+        this.stopXremote();
+
+        // 잠시 대기 후 재시작
+        setTimeout(() => {
+            this.startXremote();
+            console.log('Reconnected to X32');
+        }, 1000);
+    }
 }
 ```
 
@@ -257,19 +263,19 @@ class X32Connection {
 
 ```typescript
 class X32Connection {
-  sendXremote() {
-    try {
-      const msg = osc.toBuffer({ address: '/xremote', args: [] });
-      this.socket.send(msg, X32_PORT, X32_HOST, (err) => {
-        if (err) {
-          console.error('Failed to send /xremote:', err);
-          this.reconnect();
+    sendXremote() {
+        try {
+            const msg = osc.toBuffer({ address: '/xremote', args: [] });
+            this.socket.send(msg, X32_PORT, X32_HOST, err => {
+                if (err) {
+                    console.error('Failed to send /xremote:', err);
+                    this.reconnect();
+                }
+            });
+        } catch (error) {
+            console.error('Error creating /xremote message:', error);
         }
-      });
-    } catch (error) {
-      console.error('Error creating /xremote message:', error);
     }
-  }
 }
 ```
 
@@ -280,12 +286,12 @@ class X32Connection {
 실제 사용 예제는 다음 애플리케이션들을 참조하세요:
 
 1. **X32Saver.c** (Linux 또는 Windows)
-   - `/xremote`를 사용한 연결 유지
-   - 주기적인 갱신 구현
+    - `/xremote`를 사용한 연결 유지
+    - 주기적인 갱신 구현
 
 2. **X32 data echo in Go**
-   - Go 언어 구현
-   - 동시성 처리 예제
+    - Go 언어 구현
+    - 동시성 처리 예제
 
 자세한 내용은 문서 끝부분의 예제 섹션을 참조하세요.
 
@@ -300,20 +306,20 @@ class X32Connection {
 ### 권장 사항
 
 1. **유선 연결 사용**
-   - WiFi보다 100Mbps 이더넷 권장
-   - 패킷 손실 최소화
+    - WiFi보다 100Mbps 이더넷 권장
+    - 패킷 손실 최소화
 
 2. **버퍼 관리**
-   - UDP 수신 버퍼 크기 충분히 설정
-   - 오버플로우 방지
+    - UDP 수신 버퍼 크기 충분히 설정
+    - 오버플로우 방지
 
 3. **타임아웃 처리**
-   - 9초보다 약간 짧은 간격으로 `/xremote` 전송
-   - 네트워크 지연 고려
+    - 9초보다 약간 짧은 간격으로 `/xremote` 전송
+    - 네트워크 지연 고려
 
 4. **에러 복구**
-   - 연결 끊김 감지
-   - 자동 재연결 구현
+    - 연결 끊김 감지
+    - 자동 재연결 구현
 
 ## 디버깅 팁
 
@@ -321,21 +327,21 @@ class X32Connection {
 
 ```typescript
 class X32Connection {
-  private debug = true;
-  
-  sendXremote() {
-    if (this.debug) {
-      console.log(`[${new Date().toISOString()}] Sending /xremote`);
+    private debug = true;
+
+    sendXremote() {
+        if (this.debug) {
+            console.log(`[${new Date().toISOString()}] Sending /xremote`);
+        }
+        // 전송 로직
     }
-    // 전송 로직
-  }
-  
-  onMessage(msg: Buffer) {
-    if (this.debug) {
-      console.log(`[${new Date().toISOString()}] Received:`, msg);
+
+    onMessage(msg: Buffer) {
+        if (this.debug) {
+            console.log(`[${new Date().toISOString()}] Received:`, msg);
+        }
+        // 처리 로직
     }
-    // 처리 로직
-  }
 }
 ```
 
@@ -367,29 +373,29 @@ oscdump 10023
 // send("/xremote");
 
 // 특정 채널만 구독
-send("/subscribe ,si /ch/01/mix/fader 10");
-send("/subscribe ,si /ch/02/mix/fader 10");
+send('/subscribe ,si /ch/01/mix/fader 10');
+send('/subscribe ,si /ch/02/mix/fader 10');
 ```
 
 ### 배치 처리
 
 ```typescript
 class X32Connection {
-  private updateQueue: Array<OSCMessage> = [];
-  
-  onMessage(msg: OSCMessage) {
-    this.updateQueue.push(msg);
-  }
-  
-  processBatch() {
-    // 100ms마다 배치 처리
-    setInterval(() => {
-      if (this.updateQueue.length > 0) {
-        const batch = this.updateQueue.splice(0);
-        this.processMessages(batch);
-      }
-    }, 100);
-  }
+    private updateQueue: Array<OSCMessage> = [];
+
+    onMessage(msg: OSCMessage) {
+        this.updateQueue.push(msg);
+    }
+
+    processBatch() {
+        // 100ms마다 배치 처리
+        setInterval(() => {
+            if (this.updateQueue.length > 0) {
+                const batch = this.updateQueue.splice(0);
+                this.processMessages(batch);
+            }
+        }, 100);
+    }
 }
 ```
 
@@ -408,4 +414,3 @@ class X32Connection {
 - **변경 전파**: 모든 등록된 클라이언트에게 자동 전송
 - **로컬 변경**: 콘솔에서의 직접 변경도 전송됨
 - **네트워크**: 유선 연결 권장, UDP 특성 고려
-

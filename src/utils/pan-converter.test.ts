@@ -3,11 +3,11 @@ import { percentToPan, panToPercent, lrToPan, panToLr, parsePan } from './pan-co
 describe('Pan Converter', () => {
     describe('percentToPan', () => {
         test('converts percentage to linear', () => {
-            expect(percentToPan(-100)).toBe(0);    // Full left
-            expect(percentToPan(-50)).toBe(0.25);   // 50% left
-            expect(percentToPan(0)).toBe(0.5);      // Center
-            expect(percentToPan(50)).toBe(0.75);    // 50% right
-            expect(percentToPan(100)).toBe(1);      // Full right
+            expect(percentToPan(-100)).toBe(0); // Full left
+            expect(percentToPan(-50)).toBe(0.25); // 50% left
+            expect(percentToPan(0)).toBe(0.5); // Center
+            expect(percentToPan(50)).toBe(0.75); // 50% right
+            expect(percentToPan(100)).toBe(1); // Full right
         });
 
         test('clamps values to valid range', () => {
@@ -18,22 +18,22 @@ describe('Pan Converter', () => {
 
     describe('panToPercent', () => {
         test('converts linear to percentage', () => {
-            expect(panToPercent(0)).toBe(-100);     // Full left
-            expect(panToPercent(0.25)).toBe(-50);   // 50% left
-            expect(panToPercent(0.5)).toBe(0);      // Center
-            expect(panToPercent(0.75)).toBe(50);    // 50% right
-            expect(panToPercent(1)).toBe(100);      // Full right
+            expect(panToPercent(0)).toBe(-100); // Full left
+            expect(panToPercent(0.25)).toBe(-50); // 50% left
+            expect(panToPercent(0.5)).toBe(0); // Center
+            expect(panToPercent(0.75)).toBe(50); // 50% right
+            expect(panToPercent(1)).toBe(100); // Full right
         });
     });
 
     describe('lrToPan', () => {
         test('converts LR notation to linear', () => {
-            expect(lrToPan('L100')).toBe(0);        // Full left
-            expect(lrToPan('L50')).toBe(0.25);      // 50% left
-            expect(lrToPan('C')).toBe(0.5);         // Center
-            expect(lrToPan('CENTER')).toBe(0.5);    // Center
-            expect(lrToPan('R50')).toBe(0.75);      // 50% right
-            expect(lrToPan('R100')).toBe(1);        // Full right
+            expect(lrToPan('L100')).toBe(0); // Full left
+            expect(lrToPan('L50')).toBe(0.25); // 50% left
+            expect(lrToPan('C')).toBe(0.5); // Center
+            expect(lrToPan('CENTER')).toBe(0.5); // Center
+            expect(lrToPan('R50')).toBe(0.75); // 50% right
+            expect(lrToPan('R100')).toBe(1); // Full right
         });
 
         test('handles case insensitive input', () => {

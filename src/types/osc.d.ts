@@ -1,9 +1,9 @@
 declare module 'osc' {
-    export interface UDPPort {
+    export interface UDPPortInterface {
         open(): void;
         close(): void;
-        send(message: any, address?: string, port?: number): void;
-        on(event: string, callback: (...args: any[]) => void): void;
+        send(message: OSCMessage, address?: string, port?: number): void;
+        on(event: string, callback: (...args: unknown[]) => void): void;
     }
 
     export interface UDPPortOptions {
@@ -21,8 +21,16 @@ declare module 'osc' {
         constructor(options: UDPPortOptions);
         open(): void;
         close(): void;
-        send(message: any, address?: string, port?: number): void;
-        on(event: string, callback: (...args: any[]) => void): void;
+        send(message: OSCMessage, address?: string, port?: number): void;
+        on(event: string, callback: (...args: unknown[]) => void): void;
+    }
+
+    export interface OSCMessage {
+        address: string;
+        args?: Array<{
+            type: string;
+            value: unknown;
+        }>;
     }
 
     const osc: {

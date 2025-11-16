@@ -1,5 +1,5 @@
 import { X32Connection } from '../services/x32-connection.js';
-import { dbToFader, faderToDb } from '../utils/db-converter.js';
+import { dbToFader } from '../utils/db-converter.js';
 import { getColorValue, getColorName } from '../utils/color-converter.js';
 import { parsePan, panToPercent } from '../utils/pan-converter.js';
 

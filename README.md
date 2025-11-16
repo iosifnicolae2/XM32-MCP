@@ -1,14 +1,16 @@
-# X32/M32 MCP Server
+# X/M32 MCP Server
 
 A Model Context Protocol (MCP) server for controlling Behringer X32/M32 digital mixing consoles via OSC protocol.
 
 ## Overview
 
-This MCP server enables AI assistants to control X32/M32 digital mixing consoles through semantic, task-based tools. It implements the OSC (Open Sound Control) protocol to communicate with the mixer over the network, providing intuitive channel control, routing, and configuration capabilities.
+This MCP server enables AI assistants to control X32/M32 digital mixing consoles through semantic, task-based tools. It implements the OSC (Open Sound Control) protocol to communicate with the mixer over the network, providing intuitive channel control, routing, and configuration
+capabilities.
 
 ## Features
 
 ### 🎛️ Channel Control
+
 - **Volume Control**: Set channel faders with support for both linear (0.0-1.0) and dB values (-90 to +10 dB)
 - **Gain Control**: Adjust preamp gain for input channels
 - **Mute/Solo**: Control channel mute and solo states
@@ -16,15 +18,18 @@ This MCP server enables AI assistants to control X32/M32 digital mixing consoles
 - **EQ Control**: Configure 4-band parametric EQ per channel
 
 ### 🎨 Channel Configuration
+
 - **Naming**: Set custom channel names (max 12 characters)
 - **Colors**: Assign channel strip colors for visual organization (16 colors including inverted variants)
 
 ### 🔌 Connection Management
+
 - **Connect/Disconnect**: Establish and manage connections to X32/M32 mixers
 - **Status Monitoring**: Get connection status and mixer information
 - **Auto-discovery**: Support for standard X32 port (10023)
 
 ### 🔧 Low-Level Access
+
 - **Parameter Control**: Direct access to any OSC parameter for advanced users
 - **Generic Get/Set**: Read and write any mixer parameter by OSC address
 
@@ -60,12 +65,12 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 
 ```json
 {
-  "mcpServers": {
-    "x32": {
-      "command": "node",
-      "args": ["/path/to/X32-MCP/dist/index.js"]
+    "mcpServers": {
+        "x32": {
+            "command": "node",
+            "args": ["/path/to/X32-MCP/dist/index.js"]
+        }
     }
-  }
 }
 ```
 
@@ -89,30 +94,30 @@ connection_connect with host: "192.168.1.100" and port: 10023
 
 ### Connection Tools
 
-| Tool | Description |
-|------|-------------|
-| `connection_connect` | Connect to X32/M32 mixer |
-| `connection_disconnect` | Disconnect from mixer |
-| `connection_get_info` | Get mixer model and firmware info |
-| `connection_get_status` | Get current connection status |
+| Tool                    | Description                       |
+| ----------------------- | --------------------------------- |
+| `connection_connect`    | Connect to X32/M32 mixer          |
+| `connection_disconnect` | Disconnect from mixer             |
+| `connection_get_info`   | Get mixer model and firmware info |
+| `connection_get_status` | Get current connection status     |
 
 ### Channel Tools
 
-| Tool | Description | Parameters |
-|------|-------------|------------|
-| `channel_set_volume` | Set channel fader | `channel`, `value`, `unit` (linear/db) |
-| `channel_set_gain` | Set preamp gain | `channel`, `gain` |
-| `channel_mute` | Mute/unmute channel | `channel`, `muted` |
-| `channel_solo` | Solo/unsolo channel | `channel`, `solo` |
-| `channel_set_name` | Set channel name | `channel`, `name` |
-| `channel_set_color` | Set channel color | `channel`, `color` |
-| `channel_set_pan` | Set stereo position | `channel`, `pan` |
-| `channel_set_eq_band` | Configure EQ band | `channel`, `band`, `parameter`, `value` |
+| Tool                  | Description         | Parameters                              |
+| --------------------- | ------------------- | --------------------------------------- |
+| `channel_set_volume`  | Set channel fader   | `channel`, `value`, `unit` (linear/db)  |
+| `channel_set_gain`    | Set preamp gain     | `channel`, `gain`                       |
+| `channel_mute`        | Mute/unmute channel | `channel`, `muted`                      |
+| `channel_solo`        | Solo/unsolo channel | `channel`, `solo`                       |
+| `channel_set_name`    | Set channel name    | `channel`, `name`                       |
+| `channel_set_color`   | Set channel color   | `channel`, `color`                      |
+| `channel_set_pan`     | Set stereo position | `channel`, `pan`                        |
+| `channel_set_eq_band` | Configure EQ band   | `channel`, `band`, `parameter`, `value` |
 
 ### Low-Level Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool            | Description                      |
+| --------------- | -------------------------------- |
 | `get_parameter` | Get any parameter by OSC address |
 | `set_parameter` | Set any parameter by OSC address |
 
@@ -122,47 +127,47 @@ connection_connect with host: "192.168.1.100" and port: 10023
 
 ```javascript
 // Connect to mixer
-await connection_connect({ host: "192.168.1.100", port: 10023 });
+await connection_connect({ host: '192.168.1.100', port: 10023 });
 
 // Set channel 1 to unity gain (0 dB)
-await channel_set_volume({ channel: 1, value: 0, unit: "db" });
+await channel_set_volume({ channel: 1, value: 0, unit: 'db' });
 
 // Name the channel
-await channel_set_name({ channel: 1, name: "Lead Vocal" });
+await channel_set_name({ channel: 1, name: 'Lead Vocal' });
 
 // Set color to red
-await channel_set_color({ channel: 1, color: "red" });
+await channel_set_color({ channel: 1, color: 'red' });
 
 // Pan slightly left
-await channel_set_pan({ channel: 1, pan: "L25" });
+await channel_set_pan({ channel: 1, pan: 'L25' });
 ```
 
 ### Volume Control Examples
 
 ```javascript
 // Using dB values
-await channel_set_volume({ channel: 1, value: -10, unit: "db" });
+await channel_set_volume({ channel: 1, value: -10, unit: 'db' });
 
 // Using linear values (0.0 to 1.0)
-await channel_set_volume({ channel: 1, value: 0.75, unit: "linear" });
+await channel_set_volume({ channel: 1, value: 0.75, unit: 'linear' });
 
 // Unity gain (0 dB)
-await channel_set_volume({ channel: 1, value: 0, unit: "db" });
+await channel_set_volume({ channel: 1, value: 0, unit: 'db' });
 ```
 
 ### Pan Control Examples
 
 ```javascript
 // Using percentage (-100 to +100)
-await channel_set_pan({ channel: 1, pan: -50 });  // 50% left
+await channel_set_pan({ channel: 1, pan: -50 }); // 50% left
 
 // Using LR notation
-await channel_set_pan({ channel: 1, pan: "L50" });  // 50% left
-await channel_set_pan({ channel: 1, pan: "C" });    // Center
-await channel_set_pan({ channel: 1, pan: "R75" });  // 75% right
+await channel_set_pan({ channel: 1, pan: 'L50' }); // 50% left
+await channel_set_pan({ channel: 1, pan: 'C' }); // Center
+await channel_set_pan({ channel: 1, pan: 'R75' }); // 75% right
 
 // Using linear values (0.0 to 1.0)
-await channel_set_pan({ channel: 1, pan: 0.5 });  // Center
+await channel_set_pan({ channel: 1, pan: 0.5 }); // Center
 ```
 
 ## Technical Details
@@ -207,6 +212,7 @@ X32-MCP/
 ### OSC Protocol Implementation
 
 The server implements the X32/M32 OSC protocol for:
+
 - Channel parameters (`/ch/XX/...`)
 - Bus routing (`/bus/XX/...`)
 - Effects (`/fx/XX/...`)
@@ -272,5 +278,4 @@ MIT
 
 ## Support
 
-For issues, questions, or contributions, please visit:
-https://github.com/GoBeromsu/X32-MCP
+For issues, questions, or contributions, please visit: https://github.com/GoBeromsu/X32-MCP

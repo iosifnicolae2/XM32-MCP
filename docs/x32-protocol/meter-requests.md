@@ -10,7 +10,7 @@
 - **타임아웃**: 10초
 - **데이터 형식**: OSC blob (binary data)
 - **값 범위**: Float [0.0, 1.0] (선형 오디오 레벨, digital 0 = full-scale)
-  - 내부 헤드룸: 최대 8.0 (+18 dBfs) 허용
+    - 내부 헤드룸: 최대 8.0 (+18 dBfs) 허용
 
 ## `/meters` 명령 형식
 
@@ -20,11 +20,11 @@
 
 ### 파라미터
 
-| 파라미터 | 타입 | 설명 |
-|---------|------|------|
-| `siii` | Type tags | String + 2 integers (meter type에 따라 다름) |
-| `<meter_request>` | string | 미터 요청 ID (아래 목록 참조) |
-| `[time_factor]` | int (optional) | 업데이트 빈도 제어 |
+| 파라미터          | 타입           | 설명                                         |
+| ----------------- | -------------- | -------------------------------------------- |
+| `siii`            | Type tags      | String + 2 integers (meter type에 따라 다름) |
+| `<meter_request>` | string         | 미터 요청 ID (아래 목록 참조)                |
+| `[time_factor]`   | int (optional) | 업데이트 빈도 제어                           |
 
 ### Time Factor
 
@@ -34,13 +34,13 @@
 
 **타임아웃**: 10초 동안 활성
 
-| time_factor | 업데이트 횟수 (10초) | 간격 |
-|-------------|---------------------|------|
-| <2 또는 >99 | ~200회 | ~50ms |
-| 2 | ~100회 | 100ms |
-| 10 | ~20회 | 500ms |
-| 40 | ~5회 | 2초 |
-| 80~99 | ~3회 | 4~5초 |
+| time_factor | 업데이트 횟수 (10초) | 간격  |
+| ----------- | -------------------- | ----- |
+| <2 또는 >99 | ~200회               | ~50ms |
+| 2           | ~100회               | 100ms |
+| 10          | ~20회                | 500ms |
+| 40          | ~5회                 | 2초   |
+| 80~99       | ~3회                 | 4~5초 |
 
 **참고**: `time_factor`가 [1, 99] 범위를 벗어나면 1과 동일하게 처리됩니다.
 
@@ -55,6 +55,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 ```
 
 **필드 설명:**
+
 - `<meter_id>`: 미터 ID (null bytes로 패딩)
 - `,b~~`: Blob 포맷 표시 (null bytes로 패딩)
 - `<int1>`: Blob 길이 (bytes), 32-bit big-endian
@@ -66,17 +67,20 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 ### 예제
 
 **요청:**
+
 ```
 /meters~,si~/meters/6~~16
 ```
 
 16진수:
+
 ```
 2f6d6574657273002c7369002f6d65746572732f36000000000000010
 /  m e t e r s ~ , s i ~ / m e t e r s / 6 ~ ~ ~ [ 16]
 ```
 
 **응답:**
+
 ```
 2f6d657465727332f3600000002c6200000000014040000000fd1d2137fdff7f3f000803f6ebbd534
 /  m e t e r s / 6 ~ ~ ~ , b ~ ~ [ int1 ][ int2 ][nfloat][nfloat][nfloat][nfloat]
@@ -91,6 +95,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: METERS 페이지의 미터 값 반환 (X32-Edit에서는 사용하지 않음)
 
 **포함 내용**:
+
 - 32 input channels
 - 8 aux returns
 - 4x2 st fx returns
@@ -100,6 +105,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 70개의 float 값 (단일 binary blob)
 
 **예제**:
+
 ```
 /meters ,s meters/0
 ```
@@ -111,6 +117,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: METERS/channel 페이지의 미터 값 반환
 
 **포함 내용**:
+
 - 32 input channels
 - 32 gate gain reductions
 - 32 dynamics gain reductions
@@ -118,6 +125,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 96개의 float 값 (단일 OSC blob)
 
 **예제**:
+
 ```
 /meters ,s meters/1
 ```
@@ -129,6 +137,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: METERS/mix bus 페이지의 미터 값 반환
 
 **포함 내용**:
+
 - 16 bus masters
 - 6 matrixes
 - 2 main LR
@@ -141,6 +150,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 49개의 float 값 (단일 OSC blob)
 
 **예제**:
+
 ```
 /meters ,s meters/2
 ```
@@ -152,6 +162,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: METERS/aux/fx 페이지의 미터 값 반환
 
 **포함 내용**:
+
 - 6 aux sends
 - 8 aux returns
 - 4x2 st fx returns
@@ -159,6 +170,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 22개의 float 값 (단일 OSC blob)
 
 **예제**:
+
 ```
 /meters ,s meters/3
 ```
@@ -170,6 +182,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: METERS/in/out 페이지의 미터 값 반환
 
 **포함 내용**:
+
 - 32 input channels
 - 8 aux returns
 - 16 outputs
@@ -181,6 +194,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 82개의 float 값 (단일 OSC blob)
 
 **예제**:
+
 ```
 /meters ,s meters/4
 ```
@@ -192,17 +206,19 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: Console Surface VU Meters (채널, 그룹 및 메인 미터) 반환
 
 **파라미터**:
+
 - `<chn_meter_id>`: 채널 미터 선택
-  - `0`: 채널 1-16
-  - `1`: 채널 17-32
-  - `2`: aux/fx returns
-  - `3`: bus masters
+    - `0`: 채널 1-16
+    - `1`: 채널 17-32
+    - `2`: aux/fx returns
+    - `3`: bus masters
 - `<grp_meter_id>`: 그룹 미터 선택
-  - `1`: mix bus 1-8
-  - `2`: mix bus 9-16
-  - `3`: matrixes
+    - `1`: mix bus 1-8
+    - `2`: mix bus 9-16
+    - `3`: matrixes
 
 **포함 내용**:
+
 - 16 channel meters
 - 8 group meters
 - 2 main LR
@@ -211,6 +227,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 27개의 float 값 (단일 OSC blob)
 
 **예제**:
+
 ```
 /meters ,sii meters/5 0 1
 /meters ,sii meters/5 1 2
@@ -224,21 +241,24 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: Channel Strip Meters (post gain/trim, gate, dyn gain reduction, post-fade) 반환
 
 **파라미터**:
+
 - `<channel_id>`: 채널 번호 (0...71)
-  - 0-31: 입력 채널 1-32
-  - 32-39: aux returns 1-8
-  - 40-47: fx returns 1-8
-  - 48-63: bus masters 1-16
-  - 64-69: matrixes 1-6
-  - 70-71: main LR
+    - 0-31: 입력 채널 1-32
+    - 32-39: aux returns 1-8
+    - 40-47: fx returns 1-8
+    - 48-63: bus masters 1-16
+    - 64-69: matrixes 1-6
+    - 70-71: main LR
 
 **반환**: 4개의 float 값 (단일 OSC blob)
+
 1. Post gain/trim level
 2. Gate reduction
 3. Dynamics gain reduction
 4. Post-fader level
 
 **예제**:
+
 ```
 /meters ,si meters/6 0      # 채널 1
 /meters ,si meters/6 16     # 채널 17
@@ -253,11 +273,13 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: Bus Send 미터 값 반환
 
 **포함 내용**:
+
 - 16 bus send meters
 
 **반환**: 16개의 float 값 (Bus sends 1-16)
 
 **예제**:
+
 ```
 /meters ,s meters/7
 ```
@@ -269,11 +291,13 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: Matrix Send 미터 값 반환
 
 **포함 내용**:
+
 - 6 Matrix send meters
 
 **반환**: 6개의 float 값 (Matrix sends 1-6)
 
 **예제**:
+
 ```
 /meters ,s meters/8
 ```
@@ -285,11 +309,13 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: Effect Send 및 Return 미터 값 반환
 
 **포함 내용**:
+
 - FX 슬롯당 2개의 effects send 미터와 2개의 effects return 미터 (8 슬롯)
 
 **반환**: 32개의 float 값 (4 × FX1, 4 × FX2, ... 4 × FX8)
 
 **예제**:
+
 ```
 /meters ,s meters/9
 ```
@@ -303,6 +329,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 32개의 float 값
 
 **예제**:
+
 ```
 /meters ,s meters/10
 ```
@@ -314,6 +341,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: Monitor 페이지 미터 값 반환
 
 **포함 내용**:
+
 - Mon Left
 - Mon Right
 - Talk A/B level
@@ -323,6 +351,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 5개의 float 값
 
 **예제**:
+
 ```
 /meters ,s meters/11
 ```
@@ -334,6 +363,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: Recorder 페이지 미터 값 반환
 
 **포함 내용**:
+
 - RecInput L
 - RecInput R
 - Playback L
@@ -342,6 +372,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 4개의 float 값
 
 **예제**:
+
 ```
 /meters ,s meters/12
 ```
@@ -353,6 +384,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **설명**: METERS 페이지 미터 값 반환 (간소화 버전)
 
 **포함 내용**:
+
 - 32 input channels
 - 8 aux returns
 - 4x2 st fx returns
@@ -360,6 +392,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 48개의 float 값
 
 **예제**:
+
 ```
 /meters ,s meters/13
 ```
@@ -373,6 +406,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **반환**: 80개의 float 값
 
 **예제**:
+
 ```
 /meters ,s meters/14
 ```
@@ -388,37 +422,40 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **특수 형식**: **Little-endian coded short integers**
 
 **데이터 포맷**:
+
 - 100개의 연속된 little-endian short ints 반환
 - 범위: `[0x8000, 0x0000]`
 - 각 short int 값은 RTA dB 레벨을 나타냄 (범위: [-128.0, 0.0])
 - **변환 공식**: `float_value = short_int / 256.0`
 
 **예제 값**:
+
 - `0x08000c0` (short int) → 두 개의 값:
-  - `0x8000` → -128.0 dB (변환 후)
-  - `0xc000` → -64.0 dB (변환 후)
+    - `0x8000` → -128.0 dB (변환 후)
+    - `0xc000` → -64.0 dB (변환 후)
 - `0x40e0ffff` (short int) → 두 개의 연속 RTA 값:
-  - `-31.75dB`
-  - `-0.004dB`
+    - `-31.75dB`
+    - `-0.004dB`
 
 **클리핑 표시**: Short int 값 `0x0000` (또는 `0.0db`) → 신호 클리핑 발생
 
 **주파수 대응표** (100개 short ints → 100개 주파수):
 
-| Hz | Hz | Hz | Hz | Hz | Hz | Hz | Hz | Hz | Hz |
-|----|----|----|----|----|----|----|----|----|-----|
-| 20 | 21 | 22 | 24 | 26 | 28 | 30 | 32 | 34 | 36 |
-| 39 | 42 | 45 | 48 | 52 | 55 | 59 | 63 | 68 | 73 |
-| 78 | 84 | 90 | 96 | 103 | 110 | 118 | 127 | 136 | 146 |
-| 156 | 167 | 179 | 192 | 206 | 221 | 237 | 254 | 272 | 292 |
-| 313 | 335 | 359 | 385 | 412 | 442 | 474 | 508 | 544 | 583 |
-| 625 | 670 | 718 | 769 | 825 | 884 | 947 | 1.02K | 1.09K | 1.17K |
-| 1.25K | 1.34K | 1.44K | 1.54K | 1.65K | 1.77K | 1.89K | 2.03K | 2.18K | 2.33K |
-| 2.50K | 2.68K | 2.87K | 3.08K | 3.30K | 3.54K | 3.79K | 4.06K | 4.35K | 4.67K |
-| 5.00K | 5.36K | 5.74K | 6.16K | 6.60K | 7.07K | 7.58K | 8.12K | 8.71K | 9.33K |
+| Hz     | Hz     | Hz     | Hz     | Hz     | Hz     | Hz     | Hz     | Hz     | Hz     |
+| ------ | ------ | ------ | ------ | ------ | ------ | ------ | ------ | ------ | ------ |
+| 20     | 21     | 22     | 24     | 26     | 28     | 30     | 32     | 34     | 36     |
+| 39     | 42     | 45     | 48     | 52     | 55     | 59     | 63     | 68     | 73     |
+| 78     | 84     | 90     | 96     | 103    | 110    | 118    | 127    | 136    | 146    |
+| 156    | 167    | 179    | 192    | 206    | 221    | 237    | 254    | 272    | 292    |
+| 313    | 335    | 359    | 385    | 412    | 442    | 474    | 508    | 544    | 583    |
+| 625    | 670    | 718    | 769    | 825    | 884    | 947    | 1.02K  | 1.09K  | 1.17K  |
+| 1.25K  | 1.34K  | 1.44K  | 1.54K  | 1.65K  | 1.77K  | 1.89K  | 2.03K  | 2.18K  | 2.33K  |
+| 2.50K  | 2.68K  | 2.87K  | 3.08K  | 3.30K  | 3.54K  | 3.79K  | 4.06K  | 4.35K  | 4.67K  |
+| 5.00K  | 5.36K  | 5.74K  | 6.16K  | 6.60K  | 7.07K  | 7.58K  | 8.12K  | 8.71K  | 9.33K  |
 | 10.00K | 10.72K | 11.49K | 12.31K | 13.20K | 14.14K | 15.16K | 16.25K | 17.41K | 18.66K |
 
 **예제**:
+
 ```
 /meters ,s meters/15
 ```
@@ -436,6 +473,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 **데이터 구성**:
 
 **첫 44개 값** (32-bit 값들):
+
 - 32 channel gate gains
 - 32 channel comp gains
 - 16 bus comp gains
@@ -443,16 +481,19 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 - 2 (L/R and Mono) comp gains
 
 **데이터 포맷**:
+
 - Little-endian coded short ints
 - 각 short int 값은 floating-point 레벨 나타냄
 - 범위: `[0, 1.0]`
 - **변환 공식**: `float_value = short_int / 32767.0`
 
 **마지막 4개 float 값**:
+
 - 8 automix (채널 01...08) gains
 - Log₂(value) × 256으로 인코딩된 연속 shorts
 
 **예제**:
+
 ```
 /meters ,s meters/16
 ```
@@ -529,6 +570,7 @@ X32/M32 서버가 `/meters` 요청에 대해 반환하는 데이터는 **OSC-blo
 - **>1.0**: 클리핑 (최대 8.0 = +18 dBfs, 내부 헤드룸)
 
 **dB 변환 예시**:
+
 ```
 float_to_db(value) = 20 × log₁₀(value)
 
@@ -558,33 +600,33 @@ float_to_db(value) = 20 × log₁₀(value)
 ## 주의사항
 
 1. **Little-endian vs Big-endian**
-   - OSC 표준: Big-endian
-   - Meter blob floats: **Little-endian**
-   - RTA/Comp shorts: **Little-endian**
+    - OSC 표준: Big-endian
+    - Meter blob floats: **Little-endian**
+    - RTA/Comp shorts: **Little-endian**
 
 2. **타임아웃 관리**
-   - 모든 `/meters` 명령은 10초 후 자동 만료
-   - 지속적인 미터링을 위해 9초마다 재전송 권장
+    - 모든 `/meters` 명령은 10초 후 자동 만료
+    - 지속적인 미터링을 위해 9초마다 재전송 권장
 
 3. **버퍼 오버플로우**
-   - 50ms 업데이트 주기는 매우 빠름
-   - WiFi 연결에서는 패킷 손실 가능
-   - `time_factor`를 높여 업데이트 빈도 조절
+    - 50ms 업데이트 주기는 매우 빠름
+    - WiFi 연결에서는 패킷 손실 가능
+    - `time_factor`를 높여 업데이트 빈도 조절
 
 4. **데이터 크기**
-   - `/meters/1`: 96 floats × 4 bytes = 384 bytes
-   - `/meters/4`: 82 floats × 4 bytes = 328 bytes
-   - `/meters/15`: 50 shorts × 2 bytes = 100 bytes (100개 RTA 값)
+    - `/meters/1`: 96 floats × 4 bytes = 384 bytes
+    - `/meters/4`: 82 floats × 4 bytes = 328 bytes
+    - `/meters/15`: 50 shorts × 2 bytes = 100 bytes (100개 RTA 값)
 
 5. **채널 ID 매핑** (`/meters/6`):
-   ```
-   0-31:   Input channels 1-32
-   32-39:  Aux returns 1-8
-   40-47:  FX returns 1-8
-   48-63:  Bus masters 1-16
-   64-69:  Matrixes 1-6
-   70-71:  Main LR
-   ```
+    ```
+    0-31:   Input channels 1-32
+    32-39:  Aux returns 1-8
+    40-47:  FX returns 1-8
+    48-63:  Bus masters 1-16
+    64-69:  Matrixes 1-6
+    70-71:  Main LR
+    ```
 
 ## 참고 자료
 
@@ -592,4 +634,3 @@ float_to_db(value) = 20 × log₁₀(value)
 - [server-replies.md](./server-replies.md) - 서버 응답 목록
 - [examples.md](./examples.md) - 실제 예제 모음
 - [OSC-Protocal.md](../OSC-Protocal.md) - OSC 프로토콜 핵심 가이드
-

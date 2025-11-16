@@ -44,18 +44,19 @@ OSC 메시지는 다음과 같이 구성됩니다:
 ```
 
 모든 데이터는:
+
 - **Big-endian** 형식
 - **4-byte aligned/padded** (null bytes로 패딩)
 - OSC 1.0 스펙 준수
 
 ### OSC Type Tags
 
-| Type Tag | 설명 | 범위/형식 |
-|----------|------|-----------|
-| `i` | 32-bit integer (signed) | 정수 값 |
-| `f` | 32-bit float (signed) | 0.0 ~ 1.0 |
-| `s` | String | null-terminated |
-| `b` | Blob | 임의의 바이너리 데이터 |
+| Type Tag | 설명                    | 범위/형식              |
+| -------- | ----------------------- | ---------------------- |
+| `i`      | 32-bit integer (signed) | 정수 값                |
+| `f`      | 32-bit float (signed)   | 0.0 ~ 1.0              |
+| `s`      | String                  | null-terminated        |
+| `b`      | Blob                    | 임의의 바이너리 데이터 |
 
 ### 메시지 예제
 
@@ -69,6 +70,7 @@ OSC 메시지는 다음과 같이 구성됩니다:
 - Type tag string: `,~~~` (빈 인자)
 
 응답 예제 (X32 Standard):
+
 ```
 /info~~~,ssss~~~V2.05~~~osc-server~~X32~2.12~~~~
 ```
@@ -100,11 +102,13 @@ OSC 메시지는 다음과 같이 구성됩니다:
 ```
 
 16진수:
+
 ```
 2f63682f30312f65712f312f710000002c6600003eedfa44
 ```
 
 분해:
+
 - `2f63682f30312f65712f312f71000000`: `/ch/01/eq/1/q` + padding
 - `2c660000`: `,f` + padding
 - `3eedfa44`: 0.4648 (big-endian float)
@@ -168,17 +172,17 @@ Server: (자동으로 변경사항 전송, 10초 타임아웃)
 
 ## 주요 OSC 명령어
 
-| 명령어 | 설명 | 예제 |
-|--------|------|------|
-| `/info` | X32/M32 버전 정보 조회 | `/info~~~,~~~` |
-| `/status` | 현재 상태 조회 | `/status~,~~~` |
-| `/xremote` | 자동 업데이트 활성화 (10초) | `/xremote~~~,~~~` |
-| `/subscribe` | 특정 파라미터 구독 | `/subscribe ,si /ch/01/mix/on 1` |
-| `/node` | X32node 데이터 조회 | `/node~~~,s~~ch/01` |
-| `/meters/[0-16]` | 미터링 데이터 요청 | `/meters/0` |
-| `/ch/[01-32]/*` | 채널 관련 명령 | `/ch/01/mix/fader~~~,f~~[0.75]` |
-| `/bus/[01-16]/*` | 버스 관련 명령 | `/bus/01/mix/on~~~,i~~[1]` |
-| `/main/st/*` | 메인 스테레오 명령 | `/main/st/mix/fader~~~,f~~[0.8]` |
+| 명령어           | 설명                        | 예제                             |
+| ---------------- | --------------------------- | -------------------------------- |
+| `/info`          | X32/M32 버전 정보 조회      | `/info~~~,~~~`                   |
+| `/status`        | 현재 상태 조회              | `/status~,~~~`                   |
+| `/xremote`       | 자동 업데이트 활성화 (10초) | `/xremote~~~,~~~`                |
+| `/subscribe`     | 특정 파라미터 구독          | `/subscribe ,si /ch/01/mix/on 1` |
+| `/node`          | X32node 데이터 조회         | `/node~~~,s~~ch/01`              |
+| `/meters/[0-16]` | 미터링 데이터 요청          | `/meters/0`                      |
+| `/ch/[01-32]/*`  | 채널 관련 명령              | `/ch/01/mix/fader~~~,f~~[0.75]`  |
+| `/bus/[01-16]/*` | 버스 관련 명령              | `/bus/01/mix/on~~~,i~~[1]`       |
+| `/main/st/*`     | 메인 스테레오 명령          | `/main/st/mix/fader~~~,f~~[0.8]` |
 
 ## 다중 클라이언트 관리
 
@@ -252,4 +256,3 @@ recvfrom(Xfd, buffer, bufsize, 0, NULL, NULL);
 이 문서는 비공식 문서로, Behringer나 Midas의 공식 지원을 받지 않습니다. 정확성을 위해 노력했으나 오류나 부정확한 내용이 있을 수 있습니다.
 
 원본 문서: Patrick-Gilles Maillot (version 4.02-01, Jan 12, 2020)
-

@@ -2,11 +2,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { X32Connection } from './services/x32-connection.js';
-import {
-    registerConnectionTools,
-    registerChannelTools,
-    registerParameterTools
-} from './tools/index.js';
+import { registerConnectionTools, registerChannelTools, registerParameterTools } from './tools/index.js';
 
 /**
  * X32 MCP Server
@@ -19,12 +15,14 @@ async function main() {
     // Create MCP server using McpServer class
     const server = new McpServer(
         {
-            name: 'x32-mcp-server',
-            version: '1.0.0'
+            name: 'x-m32-mcp-server',
+            version: '2.1.0'
         },
         {
             capabilities: {
-                tools: {}
+                tools: {
+                    listChanged: true
+                }
             }
         }
     );

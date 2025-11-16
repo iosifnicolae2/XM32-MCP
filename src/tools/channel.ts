@@ -270,7 +270,6 @@ function registerChannelSoloTool(server: McpServer, connection: X32Connection): 
             try {
                 // Note: X32 solo is controlled via /-stat/solosw/XX, not channel parameter
                 // For now, we'll use mix send as a workaround
-                const message = `Channel solo is controlled via console surface. Set channel ${channel} solo to ${solo ? 'ON' : 'OFF'} manually.`;
                 return {
                     content: [
                         {
@@ -293,7 +292,6 @@ function registerChannelSoloTool(server: McpServer, connection: X32Connection): 
         }
     );
 }
-
 
 /**
  * Register channel_set_eq_band tool

@@ -11,17 +11,18 @@ export interface UDPPortOptions {
     broadcast?: boolean;
     multicastTTL?: number;
     multicastMembership?: string[];
-    socket?: any;
+    socket?: unknown;
 }
 
 export interface UDPPort {
     open(): void;
     close(): void;
-    send(packet: any, address?: string, port?: number): void;
+    send(packet: OSCMessage, address?: string, port?: number): void;
     on(event: 'ready', listener: () => void): this;
-    on(event: 'message', listener: (oscMessage: any, timeTag?: any, info?: any) => void): this;
+    on(event: 'message', listener: (oscMessage: OSCMessage, timeTag?: unknown, info?: unknown) => void): this;
     on(event: 'error', listener: (error: Error) => void): this;
     on(event: 'close', listener: () => void): this;
+    on(event: string, listener: (...args: unknown[]) => void): this;
     options: UDPPortOptions;
 }
 
@@ -29,7 +30,7 @@ export interface OSCMessage {
     address: string;
     args?: Array<{
         type: 'i' | 'f' | 's' | 'b' | 'h' | 't' | 'd' | 'S' | 'c' | 'r' | 'm' | 'T' | 'F' | 'N' | 'I';
-        value: any;
+        value: unknown;
     }>;
 }
 

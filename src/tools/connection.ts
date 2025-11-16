@@ -17,7 +17,8 @@ function registerConnectionConnectTool(server: McpServer, connection: X32Connect
         'connection_connect',
         {
             title: 'Connect to X32/M32 Mixer',
-            description: 'Establishes a connection to an X32 or M32 digital mixing console using the OSC (Open Sound Control) protocol. Use this tool when you need to control mixer functions remotely. The mixer must be powered on and connected to the same network.',
+            description:
+                'Establishes a connection to an X32 or M32 digital mixing console using the OSC (Open Sound Control) protocol. Use this tool when you need to control mixer functions remotely. The mixer must be powered on and connected to the same network.',
             inputSchema: {
                 host: z.string().describe('IP address of the X32/M32 mixer on the network (e.g., "192.168.1.100")'),
                 port: z.number().default(10023).describe('OSC port number for communication with the mixer (standard port is 10023)')
@@ -75,7 +76,8 @@ function registerConnectionDisconnectTool(server: McpServer, connection: X32Conn
         'connection_disconnect',
         {
             title: 'Disconnect from X32/M32 Mixer',
-            description: 'Disconnects from the currently connected X32 or M32 digital mixing console. Use this tool to cleanly terminate the OSC connection when mixer control is no longer needed.',
+            description:
+                'Disconnects from the currently connected X32 or M32 digital mixing console. Use this tool to cleanly terminate the OSC connection when mixer control is no longer needed.',
             inputSchema: {},
             annotations: {
                 readOnlyHint: false,
@@ -130,7 +132,8 @@ function registerConnectionGetInfoTool(server: McpServer, connection: X32Connect
         'connection_get_info',
         {
             title: 'Get X32/M32 Console Information',
-            description: 'Retrieves detailed console information from connected X32 or M32 digital mixing console. Returns model name, firmware version, server details, and other system information useful for identifying mixer capabilities and troubleshooting.',
+            description:
+                'Retrieves detailed console information from connected X32 or M32 digital mixing console. Returns model name, firmware version, server details, and other system information useful for identifying mixer capabilities and troubleshooting.',
             inputSchema: {},
             annotations: {
                 readOnlyHint: true,
@@ -193,7 +196,8 @@ function registerConnectionGetStatusTool(server: McpServer, connection: X32Conne
         'connection_get_status',
         {
             title: 'Get X32/M32 Connection Status',
-            description: 'Retrieves the current operational status of the connected X32 or M32 digital mixing console. Returns connection state, network information, and server details to monitor mixer availability and network configuration.',
+            description:
+                'Retrieves the current operational status of the connected X32 or M32 digital mixing console. Returns connection state, network information, and server details to monitor mixer availability and network configuration.',
             inputSchema: {},
             annotations: {
                 readOnlyHint: true,

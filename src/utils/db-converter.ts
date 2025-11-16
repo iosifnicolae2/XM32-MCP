@@ -18,8 +18,8 @@
  */
 export function dbToFader(db: number): number {
     // Handle special cases
-    if (db <= -90) return 0.0;  // -∞ dB or below practical minimum
-    if (db >= 10) return 1.0;   // Maximum +10 dB
+    if (db <= -90) return 0.0; // -∞ dB or below practical minimum
+    if (db >= 10) return 1.0; // Maximum +10 dB
 
     // X32 uses a specific logarithmic curve for fader values
     // Approximation based on X32 fader behavior:
@@ -81,18 +81,18 @@ export function faderToDb(fader: number): number {
  * Common dB presets for quick access
  */
 export const DB_PRESETS = {
-    OFF: -Infinity,      // Fader all the way down
-    MINUS_90: -90,        // Practical minimum
-    MINUS_60: -60,        // Very quiet
-    MINUS_30: -30,        // Quiet
-    MINUS_20: -20,        // Below nominal
-    MINUS_10: -10,        // 10 dB below unity
-    MINUS_6: -6,          // 6 dB below unity
-    MINUS_3: -3,          // 3 dB below unity
-    UNITY: 0,             // Unity gain (0 dB)
-    PLUS_3: 3,            // 3 dB above unity
-    PLUS_6: 6,            // 6 dB above unity
-    PLUS_10: 10,          // Maximum
+    OFF: -Infinity, // Fader all the way down
+    MINUS_90: -90, // Practical minimum
+    MINUS_60: -60, // Very quiet
+    MINUS_30: -30, // Quiet
+    MINUS_20: -20, // Below nominal
+    MINUS_10: -10, // 10 dB below unity
+    MINUS_6: -6, // 6 dB below unity
+    MINUS_3: -3, // 3 dB below unity
+    UNITY: 0, // Unity gain (0 dB)
+    PLUS_3: 3, // 3 dB above unity
+    PLUS_6: 6, // 6 dB above unity
+    PLUS_10: 10 // Maximum
 };
 
 /**

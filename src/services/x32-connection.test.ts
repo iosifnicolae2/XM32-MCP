@@ -58,7 +58,7 @@ describe('X32Connection Integration Tests', () => {
 
         // Test solo
         await connection.setChannelParameter(1, 'solo', 1);
-        let soloState = await connection.getChannelParameter(1, 'solo');
+        const soloState = await connection.getChannelParameter(1, 'solo');
         expect(Number(soloState)).toBe(1);
     });
 

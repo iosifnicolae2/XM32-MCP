@@ -39,7 +39,7 @@ export interface OscMessage {
 
 export interface OscArgument {
     type: string;
-    value: any;
+    value: unknown;
 }
 
 /**

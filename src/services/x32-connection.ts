@@ -1,4 +1,4 @@
-// @ts-ignore: OSC module lacks type definitions
+// @ts-expect-error: OSC module lacks type definitions
 import osc from 'osc';
 import { EventEmitter } from 'events';
 import { X32ConnectionConfig, X32InfoResponse, X32StatusResponse, OscMessage, UDPPort } from '../types/index.js';
@@ -50,8 +50,8 @@ export class X32Connection extends EventEmitter {
                 }
             });
 
-            this.udpPort!.on('message', (oscMsg: any) => {
-                this.handleIncomingMessage(oscMsg);
+            this.udpPort!.on('message', (oscMsg: unknown) => {
+                this.handleIncomingMessage(oscMsg as OscMessage);
             });
 
             try {
@@ -90,7 +90,7 @@ export class X32Connection extends EventEmitter {
     /**
      * Send OSC message and wait for response
      */
-    async sendMessage(address: string, args: any[] = [], waitForReply: boolean = true): Promise<OscMessage | null> {
+    async sendMessage(address: string, args: unknown[] = [], waitForReply: boolean = true): Promise<OscMessage | null> {
         if (!this.isConnected || !this.udpPort) {
             throw new Error('Not connected to X32/M32');
         }
@@ -167,10 +167,10 @@ export class X32Connection extends EventEmitter {
         }
 
         return {
-            serverVersion: args[0].value,
-            serverName: args[1].value,
-            consoleModel: args[2].value,
-            consoleVersion: args[3].value
+            serverVersion: String(args[0].value),
+            serverName: String(args[1].value),
+            consoleModel: String(args[2].value),
+            consoleVersion: String(args[3].value)
         };
     }
 
@@ -190,9 +190,9 @@ export class X32Connection extends EventEmitter {
         }
 
         return {
-            state: args[0].value,
-            ipAddress: args[1].value,
-            serverName: args[2].value
+            state: String(args[0].value),
+            ipAddress: String(args[1].value),
+            serverName: String(args[2].value)
         };
     }
 
@@ -215,7 +215,7 @@ export class X32Connection extends EventEmitter {
      * @param address OSC address pattern (e.g., '/ch/01/mix/fader')
      * @returns Parameter value
      */
-    async getParameter<T = any>(address: string): Promise<T> {
+    async getParameter<T = unknown>(address: string): Promise<T> {
         const response = await this.sendMessage(address);
         if (!response || !response.args || response.args.length === 0) {
             throw new Error(`No value returned from ${address}`);
@@ -228,7 +228,7 @@ export class X32Connection extends EventEmitter {
      * @param address OSC address pattern
      * @param value Value to set (string, number, or buffer)
      */
-    async setParameter(address: string, value: any): Promise<void> {
+    async setParameter(address: string, value: unknown): Promise<void> {
         await this.sendMessage(address, [value], false);
     }
 
@@ -238,7 +238,7 @@ export class X32Connection extends EventEmitter {
      * @param param Parameter path (e.g., 'config/name', 'mix/fader')
      * @returns Parameter value
      */
-    async getChannelParameter<T = any>(channel: number, param: string): Promise<T> {
+    async getChannelParameter<T = unknown>(channel: number, param: string): Promise<T> {
         if (channel < 1 || channel > 32) {
             throw new Error('Channel must be between 1 and 32');
         }
@@ -252,7 +252,7 @@ export class X32Connection extends EventEmitter {
      * @param param Parameter path (e.g., 'config/name', 'mix/fader')
      * @param value Value to set
      */
-    async setChannelParameter(channel: number, param: string, value: any): Promise<void> {
+    async setChannelParameter(channel: number, param: string, value: unknown): Promise<void> {
         if (channel < 1 || channel > 32) {
             throw new Error('Channel must be between 1 and 32');
         }
@@ -266,7 +266,7 @@ export class X32Connection extends EventEmitter {
      * @param param Parameter path (e.g., 'mix/fader', 'mix/on')
      * @returns Parameter value
      */
-    async getBusParameter<T = any>(bus: number, param: string): Promise<T> {
+    async getBusParameter<T = unknown>(bus: number, param: string): Promise<T> {
         if (bus < 1 || bus > 16) {
             throw new Error('Bus must be between 1 and 16');
         }
@@ -280,7 +280,7 @@ export class X32Connection extends EventEmitter {
      * @param param Parameter path (e.g., 'mix/fader', 'mix/on')
      * @param value Value to set
      */
-    async setBusParameter(bus: number, param: string, value: any): Promise<void> {
+    async setBusParameter(bus: number, param: string, value: unknown): Promise<void> {
         if (bus < 1 || bus > 16) {
             throw new Error('Bus must be between 1 and 16');
         }
@@ -291,7 +291,7 @@ export class X32Connection extends EventEmitter {
     /**
      * Handle incoming OSC message
      */
-    private handleIncomingMessage(oscMsg: any): void {
+    private handleIncomingMessage(oscMsg: OscMessage): void {
         const message: OscMessage = {
             address: oscMsg.address,
             args: oscMsg.args || []

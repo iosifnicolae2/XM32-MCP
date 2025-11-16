@@ -29,7 +29,7 @@ export function panToPercent(pan: number): number {
     // Clamp to valid range
     const clamped = Math.max(0, Math.min(1, pan));
     // Convert: 0.0 to 1.0 => -100 to +100
-    return (clamped * 200) - 100;
+    return clamped * 200 - 100;
 }
 
 /**
@@ -66,10 +66,10 @@ export function lrToPan(lr: string): number | null {
 
     if (side === 'L') {
         // Left: L100 = 0.0, L50 = 0.25, L0 = 0.5
-        return 0.5 - (amount / 200);
+        return 0.5 - amount / 200;
     } else {
         // Right: R0 = 0.5, R50 = 0.75, R100 = 1.0
-        return 0.5 + (amount / 200);
+        return 0.5 + amount / 200;
     }
 }
 
