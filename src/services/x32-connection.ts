@@ -1,3 +1,4 @@
+// @ts-ignore: OSC module lacks type definitions
 import osc from 'osc';
 import { EventEmitter } from 'events';
 import { X32ConnectionConfig, X32InfoResponse, X32StatusResponse, OscMessage, UDPPort } from '../types/index.js';
@@ -36,20 +37,20 @@ export class X32Connection extends EventEmitter {
                 metadata: true
             });
 
-            this.udpPort.on('ready', () => {
+            this.udpPort!.on('ready', () => {
                 this.isConnected = true;
                 this.emit('connected');
                 resolve();
             });
 
-            this.udpPort.on('error', (err: Error) => {
+            this.udpPort!.on('error', (err: Error) => {
                 this.emit('error', err);
                 if (!this.isConnected) {
                     reject(err);
                 }
             });
 
-            this.udpPort.on('message', (oscMsg: any) => {
+            this.udpPort!.on('message', (oscMsg: any) => {
                 this.handleIncomingMessage(oscMsg);
             });
 
