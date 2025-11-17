@@ -2,7 +2,14 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { X32Connection } from './services/x32-connection.js';
-import { registerConnectionTools, registerChannelTools, registerParameterTools } from './tools/index.js';
+import {
+    registerConnectionTools,
+    registerChannelTools,
+    registerBusTools,
+    registerFxTools,
+    registerMainTools,
+    registerParameterTools
+} from './tools/index.js';
 
 /**
  * X32 MCP Server
@@ -30,6 +37,9 @@ async function main() {
     // Register all domain tools
     registerConnectionTools(server, connection);
     registerChannelTools(server, connection);
+    registerBusTools(server, connection);
+    registerFxTools(server, connection);
+    registerMainTools(server, connection);
     registerParameterTools(server, connection);
 
     // Setup connection event handlers
@@ -68,6 +78,22 @@ async function main() {
     console.error('  - channel_set_color: Set channel color');
     console.error('  - channel_set_pan: Set stereo position');
     console.error('  - channel_set_eq_band: Configure EQ');
+    console.error('');
+    console.error('Bus tools:');
+    console.error('  - bus_set_volume: Set bus volume (linear or dB)');
+    console.error('  - bus_mute: Mute/unmute bus');
+    console.error('  - bus_set_send: Set channel send level to bus');
+    console.error('  - bus_get_state: Get complete bus state');
+    console.error('');
+    console.error('FX tools:');
+    console.error('  - fx_set_parameter: Set effects parameter');
+    console.error('  - fx_get_state: Get effects state');
+    console.error('  - fx_bypass: Bypass/enable effect');
+    console.error('');
+    console.error('Main/Monitor tools:');
+    console.error('  - main_set_volume: Set main stereo output volume (linear or dB)');
+    console.error('  - main_mute: Mute/unmute main output');
+    console.error('  - monitor_set_level: Set monitor output level (linear or dB)');
     console.error('');
     console.error('Low-level tools:');
     console.error('  - get_parameter: Get any parameter by OSC address');
