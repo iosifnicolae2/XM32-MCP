@@ -148,7 +148,7 @@ export class AudioVisualizationService {
     private defaultOutputDir: string;
 
     constructor(defaultOutputDir?: string) {
-        const workDir = process.env.AUDIO_WORKDIR || path.join(process.cwd(), 'output', 'audio');
+        const workDir = path.resolve(process.env.AUDIO_WORKDIR || path.join(process.cwd(), 'output', 'audio'));
         this.defaultOutputDir = defaultOutputDir || path.join(workDir, 'visualizations');
     }
 
