@@ -239,6 +239,7 @@ export class AudioCaptureService extends EventEmitter {
 
     /**
      * Record audio for a specific duration and save to WAV file
+     * Uses direct FFmpeg file output for highest quality (no Node.js pipe overhead)
      */
     async recordToFile(config: AudioRecordConfig, fileService?: AudioFileService): Promise<AudioRecordResult> {
         const { deviceId, durationSeconds, outputPath, sampleRate = DEFAULTS.sampleRate, channels = DEFAULTS.channels } = config;
@@ -247,15 +248,73 @@ export class AudioCaptureService extends EventEmitter {
             throw new Error(`Duration must be between 0 and ${DEFAULTS.maxRecordingSeconds} seconds`);
         }
 
-        debugLog(`Recording ${durationSeconds}s to file...`);
+        // Check driver availability
+        const available = await this.driver.isAvailable();
+        if (!available) {
+            throw new Error(
+                'FFmpeg is not available. Please install FFmpeg:\n' +
+                    '  macOS: brew install ffmpeg\n' +
+                    '  Windows: choco install ffmpeg\n' +
+                    '  Linux: apt install ffmpeg'
+            );
+        }
+
+        debugLog(`Recording ${durationSeconds}s to file (direct mode)...`);
 
         const fs = fileService ?? new AudioFileService();
         fs.ensureRecordingsDir();
 
         const filePath = outputPath ? fs.resolveFilePath(outputPath) : fs.generateRecordingPath();
 
+        // Resolve device
+        let resolvedDeviceId: number | undefined;
+        if (deviceId !== undefined) {
+            const device = await this.findDevice(deviceId);
+            if (!device) {
+                throw new Error(`Device not found: ${deviceId}`);
+            }
+            resolvedDeviceId = device.id;
+        } else {
+            // Try to get default loopback, fall back to first input device
+            const loopback = await this.getDefaultLoopbackDevice();
+            if (loopback) {
+                resolvedDeviceId = loopback.id;
+            } else {
+                const devices = await this.listDevices(true);
+                const inputDevice = devices.find(d => d.maxInputChannels > 0);
+                resolvedDeviceId = inputDevice?.id;
+            }
+        }
+
+        // Use direct file recording if driver supports it (bypasses Node.js pipe)
+        if (this.driver.recordToFile) {
+            const result = await this.driver.recordToFile(
+                filePath,
+                durationSeconds,
+                { sampleRate, channels, bitDepth: 16 },
+                resolvedDeviceId
+            );
+
+            const stats = await import('fs').then(fsModule => fsModule.statSync(filePath));
+
+            debugLog(`Recording saved: ${filePath} (${stats.size} bytes)`);
+
+            return {
+                filePath: result.filePath,
+                durationMs: result.durationSeconds * 1000,
+                sampleRate: result.sampleRate,
+                channels: result.channels,
+                deviceName: result.deviceName,
+                recordedAt: new Date().toISOString(),
+                fileSize: stats.size
+            };
+        }
+
+        // Fallback to pipe-based capture for drivers that don't support direct recording
+        debugLog('Direct recording not supported, falling back to pipe-based capture');
+
         const captureConfig: Partial<AudioCaptureConfig> = {
-            deviceId,
+            deviceId: resolvedDeviceId,
             sampleRate,
             channels,
             bitDepth: 16

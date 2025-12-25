@@ -1,6 +1,18 @@
 {
   "mcpServers": {
-    "xm32": {
+    "xm32-mac": {
+      "command": "npx",
+      "args": ["tsx", "../src/index.ts"],
+      "env": {
+        "MIXER_HOST": "192.168.0.50",
+        "MIXER_PORT": "10024",
+        "MIXER_TYPE": "XR18",
+        "AUDIO_DEVICE_NAME": "BlackHole 2ch",
+        "AUDIO_SAMPLE_RATE": "44100",
+        "AUDIO_WORKDIR": "./workdir/"
+      }
+    },
+    "xm32-windows": {
       "command": "npx",
       "args": ["tsx", "C:\\Users\\Adunare\\Documents\\GitHub\\XM32-MCP\\src\\index.ts"],
       "env": {
