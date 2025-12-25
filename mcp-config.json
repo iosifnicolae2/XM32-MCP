@@ -9,7 +9,7 @@
                 "MIXER_TYPE": "XR18",
                 "AUDIO_DEVICE_NAME": "BlackHole 2ch",
                 "AUDIO_SAMPLE_RATE": "44100",
-                "AUDIO_WORKDIR": "./output/audio"
+                "AUDIO_WORKDIR": "/Users/iosif/Documents/Projects/XM32-MCP/output/"
             }
         }
     }
