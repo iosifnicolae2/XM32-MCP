@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "xm32": {
+      "command": "node",
+      "args": ["../dist/index.js"],
+      "env": {
+        "MIXER_HOST": "192.168.1.100",
+        "MIXER_PORT": "10024",
+        "MIXER_TYPE": "XR18",
+        "DEBUG": "audio,mixer"
+      }
+    }
+  }
+}

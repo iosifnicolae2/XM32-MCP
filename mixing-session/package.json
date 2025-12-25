@@ -1,0 +1,20 @@
+{
+  "name": "mixing-session",
+  "version": "1.0.0",
+  "description": "Professional AI-assisted mixing session for XR18 mixers using Claude and XM32-MCP",
+  "scripts": {
+    "start": "claude",
+    "mix": "claude --mcp-config ./mcp-config.json"
+  },
+  "keywords": [
+    "audio",
+    "mixing",
+    "xr18",
+    "behringer",
+    "mcp",
+    "claude",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT"
+}
