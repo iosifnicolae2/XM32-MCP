@@ -133,3 +133,4 @@ dist/
 
 # Claude development files
 .claude/
+.idea/
