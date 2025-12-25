@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { X32Connection } from '../services/x32-connection.js';
+import { parseDeviceType, DeviceType, getDeviceConfig } from '../types/index.js';
 
 /**
  * Connection domain tools
@@ -10,18 +11,38 @@ import { X32Connection } from '../services/x32-connection.js';
 
 /**
  * Register connection_connect tool
- * Establishes connection to X32/M32 mixer
+ * Establishes connection to X32/M32/XR18 mixer
  */
 function registerConnectionConnectTool(server: McpServer, connection: X32Connection): void {
+    const defaultHost = process.env.MIXER_HOST;
+    const defaultDeviceType = parseDeviceType(process.env.MIXER_TYPE);
+    const deviceConfig = getDeviceConfig(defaultDeviceType);
+    // Use device-specific port: 10023 for X32/M32, 10024 for XAir (XR18/XR16/XR12)
+    const defaultPort = process.env.MIXER_PORT ? parseInt(process.env.MIXER_PORT, 10) : deviceConfig.defaultPort;
+
     server.registerTool(
         'connection_connect',
         {
-            title: 'Connect to X32/M32 Mixer',
+            title: 'Connect to Mixer',
             description:
-                'Establishes a connection to an X32 or M32 digital mixing console using the OSC (Open Sound Control) protocol. Use this tool when you need to control mixer functions remotely. The mixer must be powered on and connected to the same network.',
+                'Establishes a connection to an X32, M32, XR18, XR16, or XR12 digital mixing console using the OSC (Open Sound Control) protocol. Use this tool when you need to control mixer functions remotely. The mixer must be powered on and connected to the same network.' +
+                (defaultHost ? ` Default: ${defaultDeviceType} at ${defaultHost}:${defaultPort}` : ''),
             inputSchema: {
-                host: z.string().describe('IP address of the X32/M32 mixer on the network (e.g., "192.168.1.100")'),
-                port: z.number().default(10023).describe('OSC port number for communication with the mixer (standard port is 10023)')
+                host: defaultHost
+                    ? z.string().optional().describe(`IP address of the mixer (default: ${defaultHost})`)
+                    : z.string().describe('IP address of the mixer on the network (e.g., "192.168.1.100")'),
+                port: z
+                    .number()
+                    .optional()
+                    .describe(
+                        `OSC port number. Default: 10023 for X32/M32, 10024 for XAir series (XR18/XR16/XR12). Current default: ${defaultPort}`
+                    ),
+                deviceType: z
+                    .enum(['X32', 'XR18', 'XR16', 'XR12'])
+                    .optional()
+                    .describe(
+                        `Mixer type (default: ${defaultDeviceType}). X32/M32 use port 10023 and /main/st addresses. XAir series (XR18/XR16/XR12) use port 10024 and /lr addresses.`
+                    )
             },
             annotations: {
                 readOnlyHint: false,
@@ -30,43 +51,61 @@ function registerConnectionConnectTool(server: McpServer, connection: X32Connect
                 openWorldHint: true
             }
         },
-        async ({ host, port }): Promise<CallToolResult> => {
+        async ({ host, port, deviceType }): Promise<CallToolResult> => {
+            const resolvedHost = host || defaultHost;
+            const resolvedDeviceType = (deviceType as DeviceType) || defaultDeviceType;
+            // Use device-specific port if not explicitly provided
+            const resolvedDeviceConfig = getDeviceConfig(resolvedDeviceType);
+            const resolvedPort = port ?? (process.env.MIXER_PORT ? parseInt(process.env.MIXER_PORT, 10) : resolvedDeviceConfig.defaultPort);
+
+            if (!resolvedHost) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: 'Host IP address is required. Please provide the mixer IP address, or set the MIXER_HOST environment variable.'
+                        }
+                    ],
+                    isError: true
+                };
+            }
+
             if (connection.connected) {
                 return {
                     content: [
                         {
                             type: 'text',
-                            text: 'Already connected to X32/M32 mixer'
+                            text: `Already connected to ${connection.deviceConfig.type} mixer`
                         }
                     ]
                 };
             }
 
             try {
-                await connection.connect({ host, port });
+                await connection.connect({ host: resolvedHost, port: resolvedPort, deviceType: resolvedDeviceType });
                 return {
                     content: [
                         {
                             type: 'text',
-                            text: `Successfully connected to X32/M32 at ${host}:${port}`
+                            text: `Successfully connected to ${resolvedDeviceType} at ${resolvedHost}:${resolvedPort}`
                         }
                     ]
                 };
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 const troubleshootingSteps = [
-                    `Connection to X32/M32 mixer failed: ${errorMessage}`,
+                    `Connection to ${resolvedDeviceType} mixer failed: ${errorMessage}`,
                     '',
                     'Common causes and solutions:',
                     '1. Mixer is powered off or not on the network',
                     '   → Power on the mixer and ensure it is connected to the same network',
                     '',
                     '2. Incorrect IP address',
-                    `   → Verify the IP address (currently trying: ${host})`,
+                    `   → Verify the IP address (currently trying: ${resolvedHost})`,
                     "   → Check mixer's network settings menu or use network scanning tools",
                     '',
                     '3. Firewall blocking UDP traffic',
-                    `   → Ensure port ${port} (UDP) is not blocked by your firewall`,
+                    `   → Ensure port ${resolvedPort} (UDP) is not blocked by your firewall`,
                     '   → Try temporarily disabling firewall to test connectivity',
                     '',
                     '4. Network routing issues',
@@ -96,15 +135,15 @@ function registerConnectionConnectTool(server: McpServer, connection: X32Connect
 
 /**
  * Register connection_disconnect tool
- * Disconnects from X32/M32 mixer
+ * Disconnects from mixer
  */
 function registerConnectionDisconnectTool(server: McpServer, connection: X32Connection): void {
     server.registerTool(
         'connection_disconnect',
         {
-            title: 'Disconnect from X32/M32 Mixer',
+            title: 'Disconnect from Mixer',
             description:
-                'Disconnects from the currently connected X32 or M32 digital mixing console. Use this tool to cleanly terminate the OSC connection when mixer control is no longer needed.',
+                'Disconnects from the currently connected digital mixing console. Use this tool to cleanly terminate the OSC connection when mixer control is no longer needed.',
             inputSchema: {},
             annotations: {
                 readOnlyHint: false,
@@ -119,7 +158,7 @@ function registerConnectionDisconnectTool(server: McpServer, connection: X32Conn
                     content: [
                         {
                             type: 'text',
-                            text: 'Not connected to X32/M32 mixer'
+                            text: 'Not connected to mixer'
                         }
                     ]
                 };
@@ -131,14 +170,14 @@ function registerConnectionDisconnectTool(server: McpServer, connection: X32Conn
                     content: [
                         {
                             type: 'text',
-                            text: 'Successfully disconnected from X32/M32 mixer'
+                            text: 'Successfully disconnected from mixer'
                         }
                     ]
                 };
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 const troubleshootingSteps = [
-                    `Disconnection from X32/M32 mixer failed: ${errorMessage}`,
+                    `Disconnection from mixer failed: ${errorMessage}`,
                     '',
                     'What this means:',
                     '- The connection may already be closed or in an invalid state',
@@ -176,15 +215,15 @@ function registerConnectionDisconnectTool(server: McpServer, connection: X32Conn
 
 /**
  * Register connection_get_info tool
- * Retrieves console information from X32/M32 mixer
+ * Retrieves console information from mixer
  */
 function registerConnectionGetInfoTool(server: McpServer, connection: X32Connection): void {
     server.registerTool(
         'connection_get_info',
         {
-            title: 'Get X32/M32 Console Information',
+            title: 'Get Console Information',
             description:
-                'Retrieves detailed console information from connected X32 or M32 digital mixing console. Returns model name, firmware version, server details, and other system information useful for identifying mixer capabilities and troubleshooting.',
+                'Retrieves detailed console information from connected digital mixing console. Returns model name, firmware version, server details, and other system information useful for identifying mixer capabilities and troubleshooting.',
             inputSchema: {},
             annotations: {
                 readOnlyHint: true,
@@ -196,7 +235,7 @@ function registerConnectionGetInfoTool(server: McpServer, connection: X32Connect
         async (): Promise<CallToolResult> => {
             if (!connection.connected) {
                 const notConnectedMessage = [
-                    'Cannot retrieve console information: Not connected to X32/M32 mixer',
+                    'Cannot retrieve console information: Not connected to mixer',
                     '',
                     'What you need to do:',
                     '1. First establish a connection using connection_connect',
@@ -205,7 +244,8 @@ function registerConnectionGetInfoTool(server: McpServer, connection: X32Connect
                     '  Tool: connection_connect',
                     '  Parameters:',
                     '    host: "192.168.1.100"  (your mixer\'s IP address)',
-                    '    port: 10023             (standard X32/M32 OSC port)',
+                    '    port: 10023             (standard OSC port)',
+                    '    deviceType: "XR18"      (or X32, XR16, XR12)',
                     '',
                     "How to find your mixer's IP address:",
                     '- On the mixer: Setup → Network → IP Address',
@@ -291,15 +331,15 @@ function registerConnectionGetInfoTool(server: McpServer, connection: X32Connect
 
 /**
  * Register connection_get_status tool
- * Retrieves current status from X32/M32 mixer
+ * Retrieves current status from mixer
  */
 function registerConnectionGetStatusTool(server: McpServer, connection: X32Connection): void {
     server.registerTool(
         'connection_get_status',
         {
-            title: 'Get X32/M32 Connection Status',
+            title: 'Get Connection Status',
             description:
-                'Retrieves the current operational status of the connected X32 or M32 digital mixing console. Returns connection state, network information, and server details to monitor mixer availability and network configuration.',
+                'Retrieves the current operational status of the connected digital mixing console. Returns connection state, network information, and server details to monitor mixer availability and network configuration.',
             inputSchema: {},
             annotations: {
                 readOnlyHint: true,
@@ -311,7 +351,7 @@ function registerConnectionGetStatusTool(server: McpServer, connection: X32Conne
         async (): Promise<CallToolResult> => {
             if (!connection.connected) {
                 const notConnectedMessage = [
-                    'Cannot retrieve connection status: Not connected to X32/M32 mixer',
+                    'Cannot retrieve connection status: Not connected to mixer',
                     '',
                     'What you need to do:',
                     '1. First establish a connection using connection_connect',
@@ -320,7 +360,8 @@ function registerConnectionGetStatusTool(server: McpServer, connection: X32Conne
                     '  Tool: connection_connect',
                     '  Parameters:',
                     '    host: "192.168.1.100"  (your mixer\'s IP address)',
-                    '    port: 10023             (standard X32/M32 OSC port)',
+                    '    port: 10023             (standard OSC port)',
+                    '    deviceType: "XR18"      (or X32, XR16, XR12)',
                     '',
                     "How to find your mixer's IP address:",
                     '- On the mixer: Setup → Network → IP Address',
