@@ -27,7 +27,8 @@ const DEFAULTS: typeof AUDIO_DEFAULTS = {
     maxDurationMs: 30000,
     minDurationMs: 100,
     outputWidth: 800,
-    outputHeight: 400
+    outputHeight: 400,
+    maxRecordingSeconds: 300
 };
 
 /**
