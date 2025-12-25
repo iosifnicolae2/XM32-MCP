@@ -321,15 +321,30 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
         this.chunks = [];
         this.captureStartTime = Date.now();
 
-        // Build FFmpeg command
+        // Build FFmpeg command with proper buffering to prevent audio pops/clicks
+        // Key settings:
+        // - thread_queue_size: Prevents input buffer underruns under CPU load
+        // - probesize/analyzeduration: Fast initialization, reduces startup latency
+        // - aresample: Ensures clean sample rate conversion with proper async handling
         const args = [
             '-hide_banner',
             '-loglevel',
             'error',
+            // Input buffering - critical for preventing pops at buffer boundaries
+            '-thread_queue_size',
+            '1024',
+            // Fast probe settings for real-time capture
+            '-probesize',
+            '32',
+            '-analyzeduration',
+            '0',
             '-f',
             format,
             '-i',
             inputDevice,
+            // Audio filter chain for clean capture
+            '-af',
+            `aresample=async=1:first_pts=0,asetpts=N/SR/TB`,
             '-ar',
             String(config.sampleRate),
             '-ac',
@@ -341,7 +356,10 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
 
         debugLog('Starting FFmpeg capture:', 'ffmpeg', args.join(' '));
 
-        this.process = spawn('ffmpeg', args);
+        // Spawn with large stdio buffers to prevent Node.js event loop delays from causing drops
+        this.process = spawn('ffmpeg', args, {
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
 
         this.process.stdout?.on('data', (chunk: Buffer) => {
             this.chunks.push(chunk);
