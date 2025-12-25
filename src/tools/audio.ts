@@ -46,7 +46,7 @@ function registerAudioListDevicesTool(server: McpServer, captureService: AudioCa
         },
         async ({ includeLoopback = true }): Promise<CallToolResult> => {
             try {
-                const devices = captureService.listDevices(includeLoopback);
+                const devices = await captureService.listDevices(includeLoopback);
 
                 if (devices.length === 0) {
                     return {

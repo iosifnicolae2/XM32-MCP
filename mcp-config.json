@@ -6,7 +6,10 @@
             "env": {
                 "MIXER_HOST": "192.168.0.50",
                 "MIXER_PORT": "10024",
-                "MIXER_TYPE": "XR18"
+                "MIXER_TYPE": "XR18",
+                "AUDIO_DEVICE_NAME": "BlackHole 2ch",
+                "AUDIO_SAMPLE_RATE": "44100",
+                "AUDIO_OUTPUT_DIR": "./output/audio"
             }
         }
     }

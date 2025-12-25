@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
-import portAudio, { DeviceInfo, IoStreamRead, SampleFormat16Bit, SampleFormatFloat32 } from 'naudiodon';
+import { FFmpegDriver } from './audio-drivers/ffmpeg-driver.js';
+import type { AudioDriver } from './audio-drivers/types.js';
 import type { AudioDevice, AudioCaptureConfig, CapturedAudio, AudioCaptureStatus, AUDIO_DEFAULTS } from '../types/audio.js';
 
 // Debug logging (controlled by DEBUG env var)
@@ -31,87 +32,68 @@ const DEFAULTS: typeof AUDIO_DEFAULTS = {
 
 /**
  * AudioCaptureService
- * Manages audio device enumeration and capture via PortAudio (naudiodon)
+ * Manages audio device enumeration and capture via FFmpeg
  */
 export class AudioCaptureService extends EventEmitter {
-    private audioInput: IoStreamRead | null = null;
+    private driver: AudioDriver;
     private isCapturing: boolean = false;
     private config: AudioCaptureConfig | null = null;
-    private buffers: Buffer[] = [];
     private captureStartTime: number = 0;
     private currentDevice: AudioDevice | null = null;
+    private cachedDevices: AudioDevice[] | null = null;
+    private deviceCacheTime: number = 0;
+    private readonly DEVICE_CACHE_TTL = 5000; // 5 seconds cache
 
-    constructor() {
+    constructor(driver?: AudioDriver) {
         super();
+        this.driver = driver ?? new FFmpegDriver();
+
+        // Forward events from driver
+        if (this.driver instanceof EventEmitter) {
+            this.driver.on('data', data => this.emit('data', data));
+            this.driver.on('error', err => this.emit('error', err));
+        }
+    }
+
+    /**
+     * Check if FFmpeg is available
+     */
+    async isDriverAvailable(): Promise<boolean> {
+        return this.driver.isAvailable();
     }
 
     /**
      * List all available audio input devices
      * Includes loopback detection for system audio capture
      */
-    listDevices(includeLoopback: boolean = true): AudioDevice[] {
-        const devices = portAudio.getDevices();
+    async listDevices(includeLoopback: boolean = true): Promise<AudioDevice[]> {
+        // Check cache
+        const now = Date.now();
+        if (this.cachedDevices && now - this.deviceCacheTime < this.DEVICE_CACHE_TTL) {
+            debugLog('Using cached device list');
+            const devices = this.cachedDevices;
+            return includeLoopback ? devices : devices.filter(d => !d.isLoopback);
+        }
+
+        debugLog('Fetching device list from driver');
+        const devices = await this.driver.listDevices();
+
+        // Update cache
+        this.cachedDevices = devices;
+        this.deviceCacheTime = now;
+
         debugLog(`Found ${devices.length} audio devices`);
+        const filtered = includeLoopback ? devices : devices.filter(d => !d.isLoopback);
+        debugLog(`Returning ${filtered.length} devices (loopback filter: ${includeLoopback})`);
 
-        const audioDevices: AudioDevice[] = devices
-            .filter(device => device.maxInputChannels > 0 || includeLoopback)
-            .map(device => this.convertToAudioDevice(device));
-
-        debugLog(`Returning ${audioDevices.length} devices (loopback filter: ${includeLoopback})`);
-        return audioDevices;
-    }
-
-    /**
-     * Convert PortAudio DeviceInfo to our AudioDevice type
-     */
-    private convertToAudioDevice(device: DeviceInfo): AudioDevice {
-        return {
-            id: device.id,
-            name: device.name,
-            hostApi: device.hostAPIName,
-            maxInputChannels: device.maxInputChannels,
-            maxOutputChannels: device.maxOutputChannels,
-            defaultSampleRate: device.defaultSampleRate,
-            defaultLowInputLatency: device.defaultLowInputLatency,
-            defaultHighInputLatency: device.defaultHighInputLatency,
-            defaultLowOutputLatency: device.defaultLowOutputLatency,
-            defaultHighOutputLatency: device.defaultHighOutputLatency,
-            isLoopback: this.detectLoopback(device)
-        };
-    }
-
-    /**
-     * Detect if a device is a loopback/monitor device
-     * Platform-specific detection patterns
-     */
-    private detectLoopback(device: DeviceInfo): boolean {
-        const name = device.name.toLowerCase();
-        const hostApi = device.hostAPIName.toLowerCase();
-
-        // Windows WASAPI loopback devices
-        if (name.includes('[loopback]')) return true;
-        if (hostApi === 'wasapi' && name.includes('output')) return true;
-
-        // macOS virtual audio devices
-        if (name.includes('blackhole')) return true;
-        if (name.includes('soundflower')) return true;
-        if (name.includes('loopback')) return true;
-
-        // Linux PulseAudio/PipeWire monitors
-        if (name.includes('monitor of')) return true;
-        if (name.includes('monitor')) return true;
-
-        // Sonobus loopback
-        if (name.includes('sonobus')) return true;
-
-        return false;
+        return filtered;
     }
 
     /**
      * Find a device by ID or name
      */
-    findDevice(deviceIdOrName: number | string): AudioDevice | null {
-        const devices = this.listDevices(true);
+    async findDevice(deviceIdOrName: number | string): Promise<AudioDevice | null> {
+        const devices = await this.listDevices(true);
 
         if (typeof deviceIdOrName === 'number') {
             return devices.find(d => d.id === deviceIdOrName) || null;
@@ -125,8 +107,8 @@ export class AudioCaptureService extends EventEmitter {
     /**
      * Get default loopback device for the current platform
      */
-    getDefaultLoopbackDevice(): AudioDevice | null {
-        const devices = this.listDevices(true);
+    async getDefaultLoopbackDevice(): Promise<AudioDevice | null> {
+        const devices = await this.listDevices(true);
         const loopbackDevices = devices.filter(d => d.isLoopback);
 
         if (loopbackDevices.length === 0) {
@@ -146,6 +128,17 @@ export class AudioCaptureService extends EventEmitter {
             throw new Error('Already capturing audio');
         }
 
+        // Check driver availability
+        const available = await this.driver.isAvailable();
+        if (!available) {
+            throw new Error(
+                'FFmpeg is not available. Please install FFmpeg:\n' +
+                    '  macOS: brew install ffmpeg\n' +
+                    '  Windows: choco install ffmpeg\n' +
+                    '  Linux: apt install ffmpeg'
+            );
+        }
+
         // Merge with defaults
         this.config = {
             sampleRate: config?.sampleRate ?? DEFAULTS.sampleRate,
@@ -157,15 +150,15 @@ export class AudioCaptureService extends EventEmitter {
         // Find device
         let device: AudioDevice | null = null;
         if (this.config.deviceId !== undefined) {
-            device = this.findDevice(this.config.deviceId);
+            device = await this.findDevice(this.config.deviceId);
             if (!device) {
                 throw new Error(`Device not found: ${this.config.deviceId}`);
             }
         } else {
             // Try to get default loopback, fall back to default input
-            device = this.getDefaultLoopbackDevice();
+            device = await this.getDefaultLoopbackDevice();
             if (!device) {
-                const devices = this.listDevices(true);
+                const devices = await this.listDevices(true);
                 device = devices.find(d => d.maxInputChannels > 0) || null;
             }
         }
@@ -175,38 +168,11 @@ export class AudioCaptureService extends EventEmitter {
         }
 
         this.currentDevice = device;
+        this.captureStartTime = Date.now();
         debugLog(`Starting capture on device: ${device.name} (ID: ${device.id})`);
 
-        // Determine sample format based on bit depth
-        const sampleFormat = this.config.bitDepth === 32 ? SampleFormatFloat32 : SampleFormat16Bit;
-
         try {
-            this.audioInput = portAudio.AudioIO({
-                inOptions: {
-                    deviceId: device.id,
-                    sampleRate: this.config.sampleRate,
-                    channelCount: this.config.channels,
-                    sampleFormat,
-                    framesPerBuffer: 1024,
-                    closeOnError: true
-                }
-            });
-
-            this.buffers = [];
-            this.captureStartTime = Date.now();
-
-            // Collect audio data
-            this.audioInput.on('data', (data: Buffer) => {
-                this.buffers.push(data);
-                this.emit('data', data);
-            });
-
-            this.audioInput.on('error', (err: Error) => {
-                debugLog('Capture error:', err.message);
-                this.emit('error', err);
-            });
-
-            this.audioInput.start();
+            await this.driver.startCapture(this.config, device.id);
             this.isCapturing = true;
             this.emit('started', device);
             debugLog('Capture started');
@@ -220,27 +186,17 @@ export class AudioCaptureService extends EventEmitter {
      * Stop audio capture and return captured audio data
      */
     async stopCapture(): Promise<CapturedAudio> {
-        if (!this.isCapturing || !this.audioInput) {
+        if (!this.isCapturing) {
             throw new Error('Not currently capturing audio');
         }
 
-        return new Promise((resolve, reject) => {
-            const durationMs = Date.now() - this.captureStartTime;
+        debugLog('Stopping capture...');
+        const audio = await this.driver.stopCapture();
+        this.isCapturing = false;
+        this.emit('stopped', audio);
+        debugLog(`Capture stopped after ${audio.durationMs}ms`);
 
-            this.audioInput!.quit(() => {
-                debugLog(`Capture stopped after ${durationMs}ms`);
-
-                try {
-                    const capturedAudio = this.processBuffers(durationMs);
-                    this.cleanup();
-                    this.emit('stopped', capturedAudio);
-                    resolve(capturedAudio);
-                } catch (error) {
-                    this.cleanup();
-                    reject(error);
-                }
-            });
-        });
+        return audio;
     }
 
     /**
@@ -262,75 +218,18 @@ export class AudioCaptureService extends EventEmitter {
     }
 
     /**
-     * Process collected buffers into CapturedAudio
-     */
-    private processBuffers(durationMs: number): CapturedAudio {
-        if (!this.config || !this.currentDevice) {
-            throw new Error('No capture configuration available');
-        }
-
-        // Concatenate all buffers
-        const totalLength = this.buffers.reduce((sum, buf) => sum + buf.length, 0);
-        const combinedBuffer = Buffer.concat(this.buffers, totalLength);
-
-        // Convert to Float32Array based on bit depth
-        let samples: Float32Array;
-
-        if (this.config.bitDepth === 16) {
-            const numSamples = combinedBuffer.length / 2;
-            samples = new Float32Array(numSamples);
-            for (let i = 0; i < numSamples; i++) {
-                const int16 = combinedBuffer.readInt16LE(i * 2);
-                samples[i] = int16 / 32768.0;
-            }
-        } else if (this.config.bitDepth === 32) {
-            const numSamples = combinedBuffer.length / 4;
-            samples = new Float32Array(numSamples);
-            for (let i = 0; i < numSamples; i++) {
-                samples[i] = combinedBuffer.readFloatLE(i * 4);
-            }
-        } else {
-            throw new Error(`Unsupported bit depth: ${this.config.bitDepth}`);
-        }
-
-        debugLog(`Processed ${samples.length} samples from ${this.buffers.length} buffers`);
-
-        return {
-            samples,
-            sampleRate: this.config.sampleRate,
-            channels: this.config.channels,
-            durationMs,
-            deviceName: this.currentDevice.name,
-            capturedAt: new Date().toISOString()
-        };
-    }
-
-    /**
-     * Cleanup internal state
-     */
-    private cleanup(): void {
-        this.audioInput = null;
-        this.isCapturing = false;
-        this.buffers = [];
-        this.captureStartTime = 0;
-    }
-
-    /**
      * Abort capture without returning data
      */
     async abortCapture(): Promise<void> {
-        if (!this.isCapturing || !this.audioInput) {
+        if (!this.isCapturing) {
             return;
         }
 
-        return new Promise(resolve => {
-            this.audioInput!.abort(() => {
-                debugLog('Capture aborted');
-                this.cleanup();
-                this.emit('aborted');
-                resolve();
-            });
-        });
+        debugLog('Aborting capture...');
+        await this.driver.abortCapture();
+        this.isCapturing = false;
+        this.emit('aborted');
+        debugLog('Capture aborted');
     }
 
     /**
@@ -338,7 +237,6 @@ export class AudioCaptureService extends EventEmitter {
      */
     getStatus(): AudioCaptureStatus {
         const capturedDurationMs = this.isCapturing ? Date.now() - this.captureStartTime : undefined;
-        const bufferSize = this.buffers.reduce((sum, buf) => sum + buf.length, 0);
 
         return {
             isCapturing: this.isCapturing,
@@ -347,7 +245,7 @@ export class AudioCaptureService extends EventEmitter {
             sampleRate: this.config?.sampleRate,
             channels: this.config?.channels,
             capturedDurationMs,
-            bufferSize
+            bufferSize: undefined // Not easily available with FFmpeg
         };
     }
 
@@ -363,6 +261,14 @@ export class AudioCaptureService extends EventEmitter {
      */
     get device(): AudioDevice | null {
         return this.currentDevice;
+    }
+
+    /**
+     * Clear device cache to force refresh
+     */
+    clearDeviceCache(): void {
+        this.cachedDevices = null;
+        this.deviceCacheTime = 0;
     }
 }
 
