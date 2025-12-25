@@ -4,7 +4,7 @@
   "description": "Professional AI-assisted mixing session for XR18 mixers using Claude and XM32-MCP",
   "scripts": {
     "start": "claude",
-    "mix": "claude --mcp-config ./mcp-config.json"
+    "mix": "claude --dangerously-skip-permissions --mcp-config ./mcp-config.json --strict-mcp-config"
   },
   "keywords": [
     "audio",
