@@ -359,6 +359,7 @@ export class AudioAnalysisService {
 
     /**
      * Analyze harshness (spectral flux)
+     * Spectral flux measures the change in spectrum between consecutive frames
      */
     analyzeHarshness(audio: CapturedAudio): HarshnessResult {
         const { samples, sampleRate } = audio;
@@ -367,13 +368,34 @@ export class AudioAnalysisService {
         const numFrames = Math.floor((samples.length - this.fftSize) / this.hopSize) + 1;
         const fluxValues: number[] = [];
 
+        // Store previous spectrum for flux calculation
+        // Meyda.extract('spectralFlux') requires internal state we don't have,
+        // so we calculate it manually by comparing consecutive amplitude spectra
+        let prevSpectrum: Float32Array | null = null;
+
         for (let frame = 0; frame < numFrames; frame++) {
             const startSample = frame * this.hopSize;
             const frameData = samples.slice(startSample, startSample + this.fftSize);
 
-            const features = Meyda.extract(['spectralFlux'], frameData);
-            if (features && typeof features.spectralFlux === 'number') {
-                fluxValues.push(features.spectralFlux);
+            const features = Meyda.extract(['amplitudeSpectrum'], frameData);
+            if (features && isArrayLike(features.amplitudeSpectrum)) {
+                const currentSpectrum = new Float32Array(features.amplitudeSpectrum);
+
+                if (prevSpectrum !== null) {
+                    // Calculate spectral flux: sum of positive differences
+                    let flux = 0;
+                    for (let i = 0; i < currentSpectrum.length && i < prevSpectrum.length; i++) {
+                        const diff = currentSpectrum[i] - prevSpectrum[i];
+                        if (diff > 0) {
+                            flux += diff;
+                        }
+                    }
+                    // Normalize by spectrum length
+                    flux /= currentSpectrum.length;
+                    fluxValues.push(flux);
+                }
+
+                prevSpectrum = currentSpectrum;
             }
         }
 
