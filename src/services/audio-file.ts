@@ -27,6 +27,7 @@ interface WavHeader {
     bitsPerSample: number;
     data: string;
     dataSize: number;
+    dataOffset: number; // Actual byte offset where audio data starts
 }
 
 /**
@@ -236,42 +237,86 @@ export class AudioFileService {
 
     /**
      * Read WAV file header
+     * Handles WAV files with extra metadata chunks (LIST, INFO, etc.) between fmt and data
      */
     private readWavHeader(filePath: string): WavHeader {
         const fd = fs.openSync(filePath, 'r');
-        const buffer = Buffer.alloc(44);
-        fs.readSync(fd, buffer, 0, 44, 0);
+        const stats = fs.fstatSync(fd);
+
+        // Read enough bytes to parse header and find data chunk
+        // Most WAV files have data within first 1000 bytes, but some have extensive metadata
+        const headerSize = Math.min(stats.size, 10000);
+        const buffer = Buffer.alloc(headerSize);
+        fs.readSync(fd, buffer, 0, headerSize, 0);
         fs.closeSync(fd);
 
-        const header: WavHeader = {
-            riff: buffer.toString('ascii', 0, 4),
-            fileSize: buffer.readUInt32LE(4),
-            wave: buffer.toString('ascii', 8, 12),
-            fmt: buffer.toString('ascii', 12, 16),
-            fmtSize: buffer.readUInt32LE(16),
-            audioFormat: buffer.readUInt16LE(20),
-            numChannels: buffer.readUInt16LE(22),
-            sampleRate: buffer.readUInt32LE(24),
-            byteRate: buffer.readUInt32LE(28),
-            blockAlign: buffer.readUInt16LE(32),
-            bitsPerSample: buffer.readUInt16LE(34),
-            data: buffer.toString('ascii', 36, 40),
-            dataSize: buffer.readUInt32LE(40)
-        };
+        // Parse basic RIFF header
+        const riff = buffer.toString('ascii', 0, 4);
+        const fileSize = buffer.readUInt32LE(4);
+        const wave = buffer.toString('ascii', 8, 12);
+        const fmt = buffer.toString('ascii', 12, 16);
+        const fmtSize = buffer.readUInt32LE(16);
 
-        // Handle extended fmt chunk (some WAV files have fmtSize > 16)
-        if (header.fmtSize > 16) {
-            const extendedFd = fs.openSync(filePath, 'r');
-            const extOffset = 20 + header.fmtSize;
-            const dataHeaderBuffer = Buffer.alloc(8);
-            fs.readSync(extendedFd, dataHeaderBuffer, 0, 8, extOffset);
-            fs.closeSync(extendedFd);
+        // Parse fmt chunk data
+        const audioFormat = buffer.readUInt16LE(20);
+        const numChannels = buffer.readUInt16LE(22);
+        const sampleRate = buffer.readUInt32LE(24);
+        const byteRate = buffer.readUInt32LE(28);
+        const blockAlign = buffer.readUInt16LE(32);
+        const bitsPerSample = buffer.readUInt16LE(34);
 
-            header.data = dataHeaderBuffer.toString('ascii', 0, 4);
-            header.dataSize = dataHeaderBuffer.readUInt32LE(4);
+        // Scan for the 'data' chunk starting after fmt chunk
+        // fmt chunk ends at offset 20 + fmtSize (20 = 12 bytes RIFF header + 8 bytes fmt header)
+        let offset = 20 + fmtSize;
+        let dataChunkFound = false;
+        let dataSize = 0;
+        let dataOffset = 0;
+
+        debugLog(`Scanning for data chunk starting at offset ${offset}`);
+
+        while (offset < headerSize - 8) {
+            const chunkName = buffer.toString('ascii', offset, offset + 4);
+            const chunkSize = buffer.readUInt32LE(offset + 4);
+
+            debugLog(`Found chunk '${chunkName}' at offset ${offset}, size ${chunkSize}`);
+
+            if (chunkName === 'data') {
+                dataSize = chunkSize;
+                dataOffset = offset + 8; // Data starts after 8-byte chunk header
+                dataChunkFound = true;
+                debugLog(`Data chunk found at offset ${dataOffset}, size ${dataSize}`);
+                break;
+            }
+
+            // Move to next chunk (8 bytes header + chunk size)
+            offset += 8 + chunkSize;
+
+            // WAV chunks should be aligned to 2-byte boundaries (word-aligned)
+            if (chunkSize % 2 !== 0) {
+                offset += 1;
+            }
         }
 
-        return header;
+        if (!dataChunkFound) {
+            throw new Error(`Invalid WAV file: Could not find 'data' chunk in ${filePath}`);
+        }
+
+        return {
+            riff,
+            fileSize,
+            wave,
+            fmt,
+            fmtSize,
+            audioFormat,
+            numChannels,
+            sampleRate,
+            byteRate,
+            blockAlign,
+            bitsPerSample,
+            data: 'data',
+            dataSize,
+            dataOffset
+        };
     }
 
     /**
@@ -280,11 +325,9 @@ export class AudioFileService {
     private readWavSamples(filePath: string, header: WavHeader): Float32Array {
         const fd = fs.openSync(filePath, 'r');
 
-        // Calculate data offset (header + possible extended fmt)
-        const dataOffset = header.fmtSize > 16 ? 20 + header.fmtSize + 8 : 44;
-
+        // Use the dataOffset calculated during header parsing
         const dataBuffer = Buffer.alloc(header.dataSize);
-        fs.readSync(fd, dataBuffer, 0, header.dataSize, dataOffset);
+        fs.readSync(fd, dataBuffer, 0, header.dataSize, header.dataOffset);
         fs.closeSync(fd);
 
         const bytesPerSample = header.bitsPerSample / 8;

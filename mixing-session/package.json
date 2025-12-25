@@ -1,10 +1,14 @@
 {
   "name": "mixing-session",
   "version": "1.0.0",
-  "description": "Professional AI-assisted mixing session for XR18 mixers using Claude and XM32-MCP",
+  "description": "Professional AI-assisted mixing session for XR18 mixers using Claude and XM32-MCP. Use: npm run mix -- [claude-args]",
   "scripts": {
     "start": "claude",
-    "mix": "claude --dangerously-skip-permissions --mcp-config ./mcp-config.json --strict-mcp-config"
+    "mix": "claude --dangerously-skip-permissions --mcp-config ./mcp-config.json --strict-mcp-config",
+    "mix:mac": "claude --dangerously-skip-permissions --mcp-config ./mcp-config-mac.json --strict-mcp-config",
+    "mix:windows": "claude --dangerously-skip-permissions --mcp-config ./mcp-config-windows.json --strict-mcp-config",
+    "mix:mac:continue": "claude --dangerously-skip-permissions --mcp-config ./mcp-config-mac.json --strict-mcp-config --continue",
+    "mix:windows:continue": "claude --dangerously-skip-permissions --mcp-config ./mcp-config-windows.json --strict-mcp-config --continue"
   },
   "keywords": [
     "audio",

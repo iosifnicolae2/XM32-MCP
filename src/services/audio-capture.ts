@@ -266,23 +266,28 @@ export class AudioCaptureService extends EventEmitter {
 
         const filePath = outputPath ? fs.resolveFilePath(outputPath) : fs.generateRecordingPath();
 
-        // Resolve device
+        // Resolve device - check parameter first, then env var, then fallback
         let resolvedDeviceId: number | undefined;
-        if (deviceId !== undefined) {
-            const device = await this.findDevice(deviceId);
+        const deviceIdOrName = deviceId ?? process.env.AUDIO_DEVICE_NAME;
+
+        if (deviceIdOrName !== undefined) {
+            const device = await this.findDevice(deviceIdOrName);
             if (!device) {
-                throw new Error(`Device not found: ${deviceId}`);
+                throw new Error(`Device not found: ${deviceIdOrName}`);
             }
             resolvedDeviceId = device.id;
+            debugLog(`Using device from ${deviceId !== undefined ? 'parameter' : 'AUDIO_DEVICE_NAME env'}: ${device.name}`);
         } else {
             // Try to get default loopback, fall back to first input device
             const loopback = await this.getDefaultLoopbackDevice();
             if (loopback) {
                 resolvedDeviceId = loopback.id;
+                debugLog(`Using default loopback device: ${loopback.name}`);
             } else {
                 const devices = await this.listDevices(true);
                 const inputDevice = devices.find(d => d.maxInputChannels > 0);
                 resolvedDeviceId = inputDevice?.id;
+                debugLog(`Using first input device: ${inputDevice?.name}`);
             }
         }
 

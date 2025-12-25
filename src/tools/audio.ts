@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -1604,7 +1605,7 @@ function registerAudioGenerateSpectrogramTool(
                     showTimeGrid,
                     showColorbar,
                     showTitle: showLabels,
-                    title: title ?? `Spectrogram - ${fileService.resolveFilePath(filePath).split('/').pop()}`,
+                    title: title ?? `Spectrogram - ${path.basename(fileService.resolveFilePath(filePath))}`,
                     minFrequencyHz,
                     maxFrequencyHz: actualMaxFrequency,
                     outputPath
