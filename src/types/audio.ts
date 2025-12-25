@@ -329,3 +329,321 @@ export interface AudioFileInfo {
     durationMs: number;
     fileSize: number;
 }
+
+// ============================================================================
+// Problem Detection Types
+// ============================================================================
+
+/**
+ * Types of audio problems that can be detected
+ */
+export type AudioProblemType = 'muddy' | 'harsh' | 'boxy' | 'thin' | 'nasal' | 'rumble' | 'sibilant';
+
+/**
+ * Severity levels for detected problems
+ */
+export type ProblemSeverity = 'none' | 'mild' | 'moderate' | 'severe';
+
+/**
+ * Individual audio problem detection result
+ */
+export interface AudioProblem {
+    type: AudioProblemType;
+    detected: boolean;
+    severity: ProblemSeverity;
+    frequencyRange: { min: number; max: number };
+    energyDb: number;
+    excessPercentage: number;
+    recommendation: string;
+}
+
+/**
+ * Comprehensive problem report
+ */
+export interface AudioProblemsReport {
+    problems: AudioProblem[];
+    overallQuality: 'excellent' | 'good' | 'fair' | 'poor';
+    prioritizedActions: string[];
+}
+
+/**
+ * Clipping analysis result
+ */
+export interface ClippingAnalysis {
+    hasClipping: boolean;
+    clippedSamples: number;
+    clippingPercentage: number;
+    peakValue: number;
+    peakDb: number;
+    consecutiveClips: number;
+    recommendation: string;
+}
+
+/**
+ * Noise floor analysis result
+ */
+export interface NoiseFloorAnalysis {
+    noiseFloorDb: number;
+    signalPeakDb: number;
+    signalRmsDb: number;
+    signalToNoiseDb: number;
+    quietSectionCount: number;
+    suggestGate: boolean;
+    gateThresholdDb?: number;
+    recommendation: string;
+}
+
+// ============================================================================
+// Dynamics Analysis Types
+// ============================================================================
+
+/**
+ * Transient attack characteristics
+ */
+export type AttackCharacter = 'sharp' | 'medium' | 'soft';
+
+/**
+ * Transient analysis result
+ */
+export interface TransientAnalysis {
+    transientCount: number;
+    transientDensityPerSecond: number;
+    averageAttackMs: number;
+    peakAttackMs: number;
+    attackCharacter: AttackCharacter;
+    transientLocationsMs: number[];
+    recommendation: string;
+}
+
+/**
+ * Suggested compression settings
+ */
+export interface CompressionSettings {
+    ratio: string;
+    thresholdDb: number;
+    attackMs: number;
+    releaseMs: number;
+    makeupGainDb: number;
+}
+
+/**
+ * Compression needs assessment result
+ */
+export interface CompressionAssessment {
+    dynamicRangeDb: number;
+    peakToAverageRatio: number;
+    crestFactorDb: number;
+    needsCompression: boolean;
+    compressionUrgency: 'none' | 'optional' | 'recommended' | 'essential';
+    suggestedSettings: CompressionSettings;
+    recommendation: string;
+}
+
+/**
+ * Sibilance analysis result
+ */
+export interface SibilanceAnalysis {
+    hasSibilance: boolean;
+    severity: ProblemSeverity;
+    sibilantFramePercentage: number;
+    peakFrequencyHz: number;
+    averageEnergyDb: number;
+    deEsserSettings?: {
+        frequencyHz: number;
+        thresholdDb: number;
+        rangeDb: number;
+    };
+    recommendation: string;
+}
+
+/**
+ * Pumping/breathing artifact analysis
+ */
+export interface PumpingAnalysis {
+    hasPumping: boolean;
+    severity: ProblemSeverity;
+    pumpingRateHz: number;
+    modulationDepthDb: number;
+    recommendation: string;
+}
+
+// ============================================================================
+// Stereo/Spatial Analysis Types
+// ============================================================================
+
+/**
+ * Mono compatibility rating
+ */
+export type MonoCompatibility = 'excellent' | 'good' | 'fair' | 'poor';
+
+/**
+ * Stereo width character
+ */
+export type StereoWidthCharacter = 'mono' | 'narrow' | 'normal' | 'wide' | 'very-wide';
+
+/**
+ * Phase correlation analysis result
+ */
+export interface PhaseAnalysis {
+    correlationCoefficient: number;
+    correlationMin: number;
+    correlationMax: number;
+    monoCompatibility: MonoCompatibility;
+    hasPhaseIssues: boolean;
+    problematicRegions: Array<{ startMs: number; endMs: number; correlation: number }>;
+    recommendation: string;
+}
+
+/**
+ * Stereo width analysis result
+ */
+export interface StereoWidthAnalysis {
+    widthPercentage: number;
+    sideMidRatio: number;
+    midRmsDb: number;
+    sideRmsDb: number;
+    widthCharacter: StereoWidthCharacter;
+    recommendation: string;
+}
+
+/**
+ * Stereo balance analysis result
+ */
+export interface StereoBalanceAnalysis {
+    balancePercentage: number;
+    leftRmsDb: number;
+    rightRmsDb: number;
+    differenceDb: number;
+    isBalanced: boolean;
+    panDirection: 'center' | 'left' | 'right';
+    recommendation: string;
+}
+
+/**
+ * Comprehensive stereo field analysis
+ */
+export interface StereoFieldAnalysis {
+    width: StereoWidthAnalysis;
+    balance: StereoBalanceAnalysis;
+    phase: PhaseAnalysis;
+    isStereo: boolean;
+    recommendation: string;
+}
+
+// ============================================================================
+// Comprehensive Mix Diagnostic Types
+// ============================================================================
+
+/**
+ * Gain staging status
+ */
+export type GainStagingStatus = 'too-hot' | 'optimal' | 'too-quiet' | 'clipping';
+
+/**
+ * Gain staging analysis
+ */
+export interface GainStagingAnalysis {
+    status: GainStagingStatus;
+    peakDb: number;
+    rmsDb: number;
+    headroomDb: number;
+    noiseFloorDb: number;
+    signalToNoiseDb: number;
+    recommendations: string[];
+}
+
+/**
+ * Problem frequency to cut
+ */
+export interface ProblemFrequency {
+    frequencyHz: number;
+    problem: AudioProblemType;
+    suggestedCutDb: number;
+    qValue: number;
+}
+
+/**
+ * Subtractive EQ suggestions
+ */
+export interface SubtractiveEqSuggestions {
+    needsHpf: boolean;
+    suggestedHpfHz?: number;
+    hpfSlope?: '12dB' | '18dB' | '24dB';
+    problemFrequencies: ProblemFrequency[];
+    recommendations: string[];
+}
+
+/**
+ * EQ boost suggestion
+ */
+export interface EqBoost {
+    frequencyHz: number;
+    reason: string;
+    suggestedBoostDb: number;
+    qValue: number;
+}
+
+/**
+ * Additive EQ suggestions
+ */
+export interface AdditiveEqSuggestions {
+    boosts: EqBoost[];
+    recommendations: string[];
+}
+
+/**
+ * Dynamics section of mix analysis
+ */
+export interface DynamicsAnalysisSummary {
+    needsCompression: boolean;
+    compressionSettings?: CompressionSettings;
+    needsDeEsser: boolean;
+    deEsserFrequencyHz?: number;
+    needsLimiter: boolean;
+    recommendations: string[];
+}
+
+/**
+ * Spatial analysis summary
+ */
+export interface SpatialAnalysisSummary {
+    isDry: boolean;
+    stereoWidth: StereoWidthCharacter;
+    hasPhaseIssues: boolean;
+    isBalanced: boolean;
+    suggestReverb: boolean;
+    suggestDelay: boolean;
+    recommendations: string[];
+}
+
+/**
+ * Overall mix assessment
+ */
+export type MixAssessment = 'ready-for-mix' | 'needs-work' | 'significant-issues';
+
+/**
+ * Mix analysis summary
+ */
+export interface MixSummary {
+    overallAssessment: MixAssessment;
+    qualityScore: number;
+    prioritizedRecommendations: string[];
+}
+
+/**
+ * Audio source type for context-aware analysis
+ */
+export type AudioSourceType = 'vocal' | 'instrument' | 'drums' | 'bass' | 'full-mix' | 'unknown';
+
+/**
+ * Comprehensive mixing diagnostic result
+ */
+export interface MixingDiagnostic {
+    sourceType: AudioSourceType;
+    gainStaging: GainStagingAnalysis;
+    subtractiveEq: SubtractiveEqSuggestions;
+    dynamics: DynamicsAnalysisSummary;
+    additiveEq: AdditiveEqSuggestions;
+    spatial: SpatialAnalysisSummary;
+    summary: MixSummary;
+}

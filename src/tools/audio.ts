@@ -5,7 +5,10 @@ import { AudioCaptureService } from '../services/audio-capture.js';
 import { AudioAnalysisService } from '../services/audio-analysis.js';
 import { AudioVisualizationService } from '../services/audio-visualization.js';
 import { AudioFileService } from '../services/audio-file.js';
-import type { AnalysisImages, AUDIO_DEFAULTS } from '../types/audio.js';
+import { AudioProblemDetectionService } from '../services/audio-problem-detection.js';
+import { AudioDynamicsService } from '../services/audio-dynamics-analysis.js';
+import { AudioStereoAnalysisService } from '../services/audio-stereo-analysis.js';
+import type { AnalysisImages, AUDIO_DEFAULTS, AudioProblemType } from '../types/audio.js';
 
 const DEFAULTS: Pick<typeof AUDIO_DEFAULTS, 'maxRecordingSeconds'> = {
     maxRecordingSeconds: 300
@@ -696,6 +699,1039 @@ ${result.recommendation ? `\n**Recommendation:** ${result.recommendation}` : ''}
     );
 }
 
+// ============================================================================
+// Problem Detection Tools
+// ============================================================================
+
+/**
+ * Register audio_analyze_eq_problems tool
+ * Detect EQ issues: muddy, harsh, boxy, thin, nasal, rumble, sibilant
+ */
+function registerAudioAnalyzeEqProblemsTool(
+    server: McpServer,
+    fileService: AudioFileService,
+    problemService: AudioProblemDetectionService
+): void {
+    server.registerTool(
+        'audio_analyze_eq_problems',
+        {
+            title: 'Analyze EQ Problems',
+            description:
+                'Detect common EQ problems in a recorded WAV file: muddy (200-400Hz), harsh (2.5-4kHz), boxy (400-800Hz), ' +
+                'thin (lacking bass), nasal (800-1500Hz), rumble (20-80Hz), and sibilance (5-8kHz). ' +
+                'Returns severity levels and specific frequency recommendations for each detected problem.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the WAV file to analyze'),
+                problems: z
+                    .array(z.enum(['all', 'muddy', 'harsh', 'boxy', 'thin', 'nasal', 'rumble', 'sibilant']))
+                    .default(['all'])
+                    .describe('Specific problems to check for, or "all" for comprehensive analysis')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ filePath, problems = ['all'] }): Promise<CallToolResult> => {
+            try {
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
+                const report = problemService.detectAllProblems(audio);
+
+                // Filter problems if specific ones requested
+                const filteredProblems = problems.includes('all')
+                    ? report.problems
+                    : report.problems.filter(p => problems.includes(p.type as AudioProblemType | 'all'));
+
+                const detectedProblems = filteredProblems.filter(p => p.detected);
+                const qualityEmoji =
+                    report.overallQuality === 'excellent'
+                        ? '✅'
+                        : report.overallQuality === 'good'
+                          ? '👍'
+                          : report.overallQuality === 'fair'
+                            ? '⚠️'
+                            : '❌';
+
+                const problemsText =
+                    filteredProblems.length > 0
+                        ? filteredProblems
+                              .map(p => {
+                                  const emoji = p.detected
+                                      ? p.severity === 'severe'
+                                          ? '🔴'
+                                          : p.severity === 'moderate'
+                                            ? '🟡'
+                                            : '🟢'
+                                      : '⚪';
+                                  const status = p.detected ? `${p.severity.toUpperCase()} (+${p.excessPercentage}%)` : 'Not detected';
+                                  return `${emoji} **${p.type.toUpperCase()}** (${p.frequencyRange.min}-${p.frequencyRange.max}Hz): ${status}\n   ${p.recommendation}`;
+                              })
+                              .join('\n\n')
+                        : 'No problems analyzed.';
+
+                const resultText = `## EQ Problem Analysis ${qualityEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
+
+**Overall Quality:** ${report.overallQuality.toUpperCase()}
+
+**Detected Problems:** ${detectedProblems.length}/${filteredProblems.length}
+
+${problemsText}
+
+${report.prioritizedActions.length > 0 ? `**Priority Actions:**\n${report.prioritizedActions.map((a, i) => `${i + 1}. ${a}`).join('\n')}` : ''}`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+/**
+ * Register audio_analyze_clipping tool
+ */
+function registerAudioAnalyzeClippingTool(
+    server: McpServer,
+    fileService: AudioFileService,
+    problemService: AudioProblemDetectionService
+): void {
+    server.registerTool(
+        'audio_analyze_clipping',
+        {
+            title: 'Analyze Audio Clipping',
+            description:
+                'Detect digital clipping and peak distortion in a recorded WAV file. ' +
+                'Reports the number of clipped samples, their locations, and severity. ' +
+                'Essential for gain staging and identifying distortion issues.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the WAV file to analyze'),
+                threshold: z
+                    .number()
+                    .min(0.9)
+                    .max(1.0)
+                    .default(0.99)
+                    .describe('Sample value threshold to consider as clipping (0.99 = 99% of max)')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ filePath, threshold = 0.99 }): Promise<CallToolResult> => {
+            try {
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
+                const result = problemService.detectClipping(audio, threshold);
+
+                const statusEmoji = result.hasClipping ? (result.clippingPercentage > 1 ? '🔴' : '🟡') : '✅';
+
+                const resultText = `## Clipping Analysis ${statusEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
+
+**Status:** ${result.hasClipping ? 'CLIPPING DETECTED' : 'No significant clipping'}
+
+**Peak Level:**
+- Peak Value: ${result.peakValue} (${result.peakDb} dB)
+
+**Clipping Statistics:**
+- Clipped Samples: ${result.clippedSamples} (${result.clippingPercentage}%)
+- Consecutive Clip Events: ${result.consecutiveClips}
+- Detection Threshold: ${threshold}
+
+**Recommendation:** ${result.recommendation}`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+/**
+ * Register audio_analyze_noise_floor tool
+ */
+function registerAudioAnalyzeNoiseFloorTool(
+    server: McpServer,
+    fileService: AudioFileService,
+    problemService: AudioProblemDetectionService
+): void {
+    server.registerTool(
+        'audio_analyze_noise_floor',
+        {
+            title: 'Analyze Noise Floor',
+            description:
+                'Analyze the signal-to-noise ratio and noise floor of a recorded WAV file. ' +
+                'Determines if noise reduction or gating is needed and suggests threshold settings. ' +
+                'Essential for clean recordings and proper gain staging.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the WAV file to analyze'),
+                quietThresholdDb: z
+                    .number()
+                    .default(-40)
+                    .describe('dB threshold below which audio is considered "quiet" for noise measurement')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ filePath, quietThresholdDb = -40 }): Promise<CallToolResult> => {
+            try {
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
+                const result = problemService.analyzeNoiseFloor(audio, quietThresholdDb);
+
+                const snrEmoji =
+                    result.signalToNoiseDb > 60 ? '✅' : result.signalToNoiseDb > 40 ? '👍' : result.signalToNoiseDb > 20 ? '⚠️' : '❌';
+
+                const resultText = `## Noise Floor Analysis ${snrEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
+
+**Signal Levels:**
+- Signal Peak: ${result.signalPeakDb} dB
+- Signal RMS: ${result.signalRmsDb} dB
+
+**Noise Analysis:**
+- Noise Floor: ${result.noiseFloorDb} dB
+- Signal-to-Noise Ratio: ${result.signalToNoiseDb} dB
+- Quiet Sections Found: ${result.quietSectionCount}
+
+**Gate Recommendation:**
+${result.suggestGate ? `- Noise gate recommended at ${result.gateThresholdDb} dB threshold` : '- No noise gate needed'}
+
+**Recommendation:** ${result.recommendation}`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+// ============================================================================
+// Dynamics Analysis Tools
+// ============================================================================
+
+/**
+ * Register audio_analyze_transients tool
+ */
+function registerAudioAnalyzeTransientsTool(server: McpServer, fileService: AudioFileService, dynamicsService: AudioDynamicsService): void {
+    server.registerTool(
+        'audio_analyze_transients',
+        {
+            title: 'Analyze Transients',
+            description:
+                'Analyze transient attack characteristics of a recorded WAV file. ' +
+                'Identifies attack speed, transient density, and recommends compressor attack/release settings. ' +
+                'Essential for drums, percussion, and any material with sharp attacks.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the WAV file to analyze'),
+                sensitivity: z
+                    .enum(['low', 'medium', 'high'])
+                    .default('medium')
+                    .describe('Detection sensitivity - higher detects more subtle transients')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ filePath, sensitivity = 'medium' }): Promise<CallToolResult> => {
+            try {
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
+                const result = dynamicsService.detectTransients(audio, sensitivity);
+
+                const characterEmoji = result.attackCharacter === 'sharp' ? '⚡' : result.attackCharacter === 'medium' ? '📊' : '🌊';
+
+                const resultText = `## Transient Analysis ${characterEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
+
+**Transient Count:** ${result.transientCount}
+**Density:** ${result.transientDensityPerSecond} transients/second
+
+**Attack Characteristics:**
+- Attack Character: ${result.attackCharacter.toUpperCase()}
+- Average Attack Time: ${result.averageAttackMs} ms
+- Fastest Attack: ${result.peakAttackMs} ms
+
+**Transient Locations (first 10):**
+${result.transientLocationsMs
+    .slice(0, 10)
+    .map(t => `- ${t} ms`)
+    .join('\n')}
+${result.transientLocationsMs.length > 10 ? `\n... and ${result.transientLocationsMs.length - 10} more` : ''}
+
+**Recommendation:** ${result.recommendation}`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+/**
+ * Register audio_analyze_dynamics tool
+ */
+function registerAudioAnalyzeDynamicsTool(server: McpServer, fileService: AudioFileService, dynamicsService: AudioDynamicsService): void {
+    server.registerTool(
+        'audio_analyze_dynamics',
+        {
+            title: 'Analyze Dynamic Range',
+            description:
+                'Analyze dynamic range and assess compression needs for a recorded WAV file. ' +
+                'Returns dynamic range measurements, peak-to-average ratio, and suggests specific compression settings (ratio, threshold, attack, release). ' +
+                'Essential for leveling and dynamics control decisions.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the WAV file to analyze'),
+                targetDynamicRangeDb: z.number().min(6).max(30).default(12).describe('Target dynamic range in dB for the compressed audio')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ filePath, targetDynamicRangeDb = 12 }): Promise<CallToolResult> => {
+            try {
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
+                const result = dynamicsService.assessCompressionNeed(audio, targetDynamicRangeDb);
+
+                const urgencyEmoji =
+                    result.compressionUrgency === 'essential'
+                        ? '🔴'
+                        : result.compressionUrgency === 'recommended'
+                          ? '🟡'
+                          : result.compressionUrgency === 'optional'
+                            ? '🟢'
+                            : '⚪';
+
+                const resultText = `## Dynamic Range Analysis ${urgencyEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
+
+**Dynamics Measurements:**
+- Dynamic Range: ${result.dynamicRangeDb} dB (target: ${targetDynamicRangeDb} dB)
+- Peak-to-Average Ratio: ${result.peakToAverageRatio}
+- Crest Factor: ${result.crestFactorDb} dB
+
+**Compression Assessment:**
+- Needs Compression: ${result.needsCompression ? 'YES' : 'NO'}
+- Urgency: ${result.compressionUrgency.toUpperCase()}
+
+**Suggested Compressor Settings:**
+- Ratio: ${result.suggestedSettings.ratio}
+- Threshold: ${result.suggestedSettings.thresholdDb} dB
+- Attack: ${result.suggestedSettings.attackMs} ms
+- Release: ${result.suggestedSettings.releaseMs} ms
+- Makeup Gain: ${result.suggestedSettings.makeupGainDb} dB
+
+**Recommendation:** ${result.recommendation}`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+/**
+ * Register audio_analyze_sibilance tool
+ */
+function registerAudioAnalyzeSibilanceTool(server: McpServer, fileService: AudioFileService, dynamicsService: AudioDynamicsService): void {
+    server.registerTool(
+        'audio_analyze_sibilance',
+        {
+            title: 'Analyze Sibilance',
+            description:
+                'Detect sibilance (harsh S, T, F sounds) in a recorded WAV file, typically in the 5-8 kHz range. ' +
+                'Provides de-esser settings recommendations including frequency, threshold, and range. ' +
+                'Essential for vocal recordings.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the WAV file to analyze (ideally a vocal recording)')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ filePath }): Promise<CallToolResult> => {
+            try {
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
+                const result = dynamicsService.detectSibilance(audio);
+
+                const severityEmoji =
+                    result.severity === 'severe' ? '🔴' : result.severity === 'moderate' ? '🟡' : result.severity === 'mild' ? '🟢' : '✅';
+
+                let deEsserText = 'De-esser not required.';
+                if (result.deEsserSettings) {
+                    deEsserText = `**Suggested De-Esser Settings:**
+- Frequency: ${result.deEsserSettings.frequencyHz} Hz
+- Threshold: ${result.deEsserSettings.thresholdDb} dB
+- Range: ${result.deEsserSettings.rangeDb} dB`;
+                }
+
+                const resultText = `## Sibilance Analysis ${severityEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
+
+**Status:** ${result.hasSibilance ? 'SIBILANCE DETECTED' : 'No significant sibilance'}
+
+**Analysis:**
+- Severity: ${result.severity.toUpperCase()}
+- Sibilant Frames: ${result.sibilantFramePercentage}%
+- Peak Frequency: ${result.peakFrequencyHz} Hz
+- Average Energy: ${result.averageEnergyDb} dB
+
+${deEsserText}
+
+**Recommendation:** ${result.recommendation}`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+/**
+ * Register audio_analyze_pumping tool
+ */
+function registerAudioAnalyzePumpingTool(server: McpServer, fileService: AudioFileService, dynamicsService: AudioDynamicsService): void {
+    server.registerTool(
+        'audio_analyze_pumping',
+        {
+            title: 'Analyze Compression Pumping',
+            description:
+                'Detect compression pumping/breathing artifacts in a recorded WAV file. ' +
+                'Identifies rhythmic level fluctuations caused by over-compression. ' +
+                'Helps diagnose problematic compression settings.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the WAV file to analyze')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ filePath }): Promise<CallToolResult> => {
+            try {
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
+                const result = dynamicsService.detectPumping(audio);
+
+                const severityEmoji =
+                    result.severity === 'severe' ? '🔴' : result.severity === 'moderate' ? '🟡' : result.severity === 'mild' ? '🟢' : '✅';
+
+                const resultText = `## Compression Pumping Analysis ${severityEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
+
+**Status:** ${result.hasPumping ? 'PUMPING DETECTED' : 'No significant pumping'}
+
+**Analysis:**
+- Severity: ${result.severity.toUpperCase()}
+- Pumping Rate: ${result.pumpingRateHz} Hz
+- Modulation Depth: ${result.modulationDepthDb} dB
+
+**Recommendation:** ${result.recommendation}`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+// ============================================================================
+// Stereo/Spatial Analysis Tools
+// ============================================================================
+
+/**
+ * Register audio_analyze_phase tool
+ */
+function registerAudioAnalyzePhaseTool(server: McpServer, fileService: AudioFileService, stereoService: AudioStereoAnalysisService): void {
+    server.registerTool(
+        'audio_analyze_phase',
+        {
+            title: 'Analyze Phase Correlation',
+            description:
+                'Analyze phase correlation between stereo channels to detect phase cancellation issues and mono compatibility. ' +
+                'Returns correlation coefficient (-1 to +1), mono compatibility rating, and identifies problematic regions. ' +
+                'Essential for ensuring mixes translate well to mono systems.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the stereo WAV file to analyze')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ filePath }): Promise<CallToolResult> => {
+            try {
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
+                const result = stereoService.analyzePhaseCorrelation(audio);
+
+                const compatEmoji =
+                    result.monoCompatibility === 'excellent'
+                        ? '✅'
+                        : result.monoCompatibility === 'good'
+                          ? '👍'
+                          : result.monoCompatibility === 'fair'
+                            ? '⚠️'
+                            : '❌';
+
+                let regionsText = 'None detected.';
+                if (result.problematicRegions.length > 0) {
+                    regionsText = result.problematicRegions
+                        .map(r => `- ${r.startMs}-${r.endMs}ms: correlation ${r.correlation}`)
+                        .join('\n');
+                }
+
+                const resultText = `## Phase Correlation Analysis ${compatEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
+
+**Phase Correlation:**
+- Coefficient: ${result.correlationCoefficient} (range: -1 to +1)
+- Min: ${result.correlationMin} | Max: ${result.correlationMax}
+
+**Mono Compatibility:** ${result.monoCompatibility.toUpperCase()}
+**Phase Issues:** ${result.hasPhaseIssues ? 'YES' : 'NO'}
+
+**Problematic Regions:**
+${regionsText}
+
+**Recommendation:** ${result.recommendation}`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+/**
+ * Register audio_analyze_stereo_field tool
+ */
+function registerAudioAnalyzeStereoFieldTool(
+    server: McpServer,
+    fileService: AudioFileService,
+    stereoService: AudioStereoAnalysisService
+): void {
+    server.registerTool(
+        'audio_analyze_stereo_field',
+        {
+            title: 'Analyze Stereo Field',
+            description:
+                'Comprehensive stereo field analysis including width measurement (M/S analysis), left/right balance, and phase correlation. ' +
+                'Provides a complete picture of the stereo image. ' +
+                'Essential for stereo mixing and mastering decisions.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the stereo WAV file to analyze')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ filePath }): Promise<CallToolResult> => {
+            try {
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
+                const result = stereoService.analyzeStereoField(audio);
+
+                const stereoEmoji = result.isStereo ? '🔊' : '🔈';
+
+                const resultText = `## Stereo Field Analysis ${stereoEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
+
+**Format:** ${result.isStereo ? 'STEREO' : 'MONO'}
+
+**Stereo Width:**
+- Width: ${result.width.widthPercentage}%
+- Character: ${result.width.widthCharacter.toUpperCase()}
+- Side/Mid Ratio: ${result.width.sideMidRatio}
+- Mid RMS: ${result.width.midRmsDb} dB
+- Side RMS: ${result.width.sideRmsDb} dB
+
+**Stereo Balance:**
+- Balance: ${result.balance.balancePercentage}% (0 = center)
+- Left RMS: ${result.balance.leftRmsDb} dB
+- Right RMS: ${result.balance.rightRmsDb} dB
+- Difference: ${result.balance.differenceDb} dB
+- Direction: ${result.balance.panDirection.toUpperCase()}
+- Balanced: ${result.balance.isBalanced ? 'YES' : 'NO'}
+
+**Phase Correlation:**
+- Coefficient: ${result.phase.correlationCoefficient}
+- Mono Compatibility: ${result.phase.monoCompatibility.toUpperCase()}
+- Phase Issues: ${result.phase.hasPhaseIssues ? 'YES' : 'NO'}
+
+**Overall Recommendation:** ${result.recommendation}`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+// ============================================================================
+// Comprehensive Mix Diagnostic Tool
+// ============================================================================
+
+/**
+ * Register audio_analyze_mix tool
+ * Complete mixing workflow analysis
+ */
+function registerAudioAnalyzeMixTool(
+    server: McpServer,
+    fileService: AudioFileService,
+    analysisService: AudioAnalysisService,
+    problemService: AudioProblemDetectionService,
+    dynamicsService: AudioDynamicsService,
+    stereoService: AudioStereoAnalysisService
+): void {
+    server.registerTool(
+        'audio_analyze_mix',
+        {
+            title: 'Complete Mix Analysis',
+            description:
+                'Run comprehensive audio analysis for the complete mixing workflow. ' +
+                'Provides structured recommendations for: gain staging, subtractive EQ (problem frequencies), ' +
+                'dynamics (compression, de-essing), additive EQ (character frequencies), and spatial processing (stereo, reverb). ' +
+                'This is the "master" diagnostic tool that provides a complete mixing starting point.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the WAV file to analyze'),
+                sourceType: z
+                    .enum(['vocal', 'instrument', 'drums', 'bass', 'full-mix', 'unknown'])
+                    .default('unknown')
+                    .describe('Type of audio source - helps tailor recommendations'),
+                targetLoudnessDb: z.number().default(-14).describe('Target integrated loudness for final mix (LUFS/dB)')
+            },
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({ filePath, sourceType = 'unknown', targetLoudnessDb: _targetLoudnessDb = -14 }): Promise<CallToolResult> => {
+            try {
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
+
+                // Run all analyses
+                const loudness = analysisService.measureLoudness(audio);
+                const eqProblems = problemService.detectAllProblems(audio);
+                const clipping = problemService.detectClipping(audio);
+                const noiseFloor = problemService.analyzeNoiseFloor(audio);
+                const dynamics = dynamicsService.assessCompressionNeed(audio);
+                const transients = dynamicsService.detectTransients(audio);
+                const sibilance = dynamicsService.detectSibilance(audio);
+                const stereoField = stereoService.analyzeStereoField(audio);
+
+                // Build gain staging assessment
+                let gainStatus: string;
+                const gainRecommendations: string[] = [];
+                if (clipping.hasClipping) {
+                    gainStatus = 'CLIPPING';
+                    gainRecommendations.push(`Reduce input gain by ${Math.ceil(clipping.peakDb)}dB to eliminate clipping`);
+                } else if (loudness.rmsDb > -6) {
+                    gainStatus = 'TOO HOT';
+                    gainRecommendations.push('Reduce gain by 3-6dB to create headroom');
+                } else if (loudness.rmsDb < -20) {
+                    gainStatus = 'TOO QUIET';
+                    gainRecommendations.push('Increase gain to improve signal-to-noise ratio');
+                } else {
+                    gainStatus = 'OPTIMAL';
+                    gainRecommendations.push('Gain staging is good');
+                }
+                if (noiseFloor.suggestGate) {
+                    gainRecommendations.push(`Apply noise gate at ${noiseFloor.gateThresholdDb}dB`);
+                }
+
+                // Build subtractive EQ section
+                const detectedProblems = eqProblems.problems.filter(p => p.detected);
+                const subEqRecommendations: string[] = [];
+
+                // Check for HPF need (rumble detection)
+                const rumbleProb = eqProblems.problems.find(p => p.type === 'rumble');
+                if (rumbleProb?.detected) {
+                    subEqRecommendations.push(`Apply HPF at 80-100Hz (${rumbleProb.severity} rumble detected)`);
+                } else if (sourceType === 'vocal') {
+                    subEqRecommendations.push('Apply HPF at 80-100Hz for vocals');
+                }
+
+                // Add problem frequency recommendations
+                detectedProblems.forEach(p => {
+                    if (p.type !== 'thin' && p.type !== 'rumble') {
+                        const centerFreq = Math.round((p.frequencyRange.min + p.frequencyRange.max) / 2);
+                        subEqRecommendations.push(`Cut ${p.severity === 'severe' ? '4-6' : '2-4'}dB at ${centerFreq}Hz (${p.type})`);
+                    }
+                });
+
+                // Build dynamics section
+                const dynamicsRecommendations: string[] = [];
+                if (dynamics.needsCompression) {
+                    dynamicsRecommendations.push(
+                        `Apply ${dynamics.suggestedSettings.ratio} compression at ${dynamics.suggestedSettings.thresholdDb}dB`
+                    );
+                    dynamicsRecommendations.push(
+                        `Use ${dynamics.suggestedSettings.attackMs}ms attack, ${dynamics.suggestedSettings.releaseMs}ms release`
+                    );
+                }
+                if (sibilance.hasSibilance && (sourceType === 'vocal' || sourceType === 'unknown')) {
+                    dynamicsRecommendations.push(`Apply de-esser at ${sibilance.peakFrequencyHz}Hz (${sibilance.severity} sibilance)`);
+                }
+                if (transients.attackCharacter === 'sharp') {
+                    dynamicsRecommendations.push('Consider fast compressor attack (1-5ms) or parallel compression for transient control');
+                }
+
+                // Build additive EQ section
+                const addEqRecommendations: string[] = [];
+                const thinProb = eqProblems.problems.find(p => p.type === 'thin');
+                if (thinProb?.detected) {
+                    addEqRecommendations.push('Boost 100-200Hz by 2-4dB to add body');
+                }
+                if (sourceType === 'vocal') {
+                    addEqRecommendations.push('Consider air boost above 10kHz for presence');
+                    addEqRecommendations.push('Presence boost at 3-5kHz can help vocals cut through');
+                }
+                if (sourceType === 'drums') {
+                    addEqRecommendations.push('Boost 60-100Hz for kick punch');
+                    addEqRecommendations.push('Boost 3-5kHz for snare crack');
+                }
+
+                // Build spatial section
+                const spatialRecommendations: string[] = [];
+                if (stereoField.phase.hasPhaseIssues) {
+                    spatialRecommendations.push('Check stereo processing - phase issues detected');
+                }
+                if (!stereoField.balance.isBalanced) {
+                    spatialRecommendations.push(
+                        `Adjust balance - currently ${stereoField.balance.differenceDb}dB toward ${stereoField.balance.panDirection}`
+                    );
+                }
+                if (stereoField.width.widthCharacter === 'mono' || stereoField.width.widthCharacter === 'narrow') {
+                    spatialRecommendations.push('Consider stereo widening, reverb, or delay for more width');
+                }
+                if (stereoField.width.widthCharacter === 'very-wide') {
+                    spatialRecommendations.push('Consider narrowing stereo width for better mono compatibility');
+                }
+
+                // Calculate quality score
+                let qualityScore = 100;
+                if (clipping.hasClipping) qualityScore -= 20;
+                if (loudness.rmsDb > -6 || loudness.rmsDb < -20) qualityScore -= 10;
+                qualityScore -= detectedProblems.length * 5;
+                if (stereoField.phase.hasPhaseIssues) qualityScore -= 10;
+                if (!stereoField.balance.isBalanced) qualityScore -= 5;
+                qualityScore = Math.max(0, qualityScore);
+
+                let overallAssessment: string;
+                if (qualityScore >= 80) {
+                    overallAssessment = 'READY FOR MIX';
+                } else if (qualityScore >= 50) {
+                    overallAssessment = 'NEEDS WORK';
+                } else {
+                    overallAssessment = 'SIGNIFICANT ISSUES';
+                }
+
+                // Build prioritized recommendations
+                const prioritizedRecommendations: string[] = [];
+                if (clipping.hasClipping) prioritizedRecommendations.push('1. Fix clipping first');
+                if (detectedProblems.some(p => p.severity === 'severe')) {
+                    prioritizedRecommendations.push('2. Address severe EQ problems');
+                }
+                if (dynamics.compressionUrgency === 'essential') {
+                    prioritizedRecommendations.push('3. Apply compression for dynamics control');
+                }
+                if (stereoField.phase.hasPhaseIssues) {
+                    prioritizedRecommendations.push('4. Fix phase issues');
+                }
+
+                const assessmentEmoji = overallAssessment === 'READY FOR MIX' ? '✅' : overallAssessment === 'NEEDS WORK' ? '⚠️' : '❌';
+
+                const resultText = `## Complete Mix Analysis ${assessmentEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
+**Source Type:** ${sourceType.toUpperCase()}
+**Quality Score:** ${qualityScore}/100
+**Assessment:** ${overallAssessment}
+
+---
+
+### 1. GAIN STAGING
+**Status:** ${gainStatus}
+- Peak: ${loudness.peakDb} dB
+- RMS: ${loudness.rmsDb} dB
+- Headroom: ${(-loudness.peakDb).toFixed(1)} dB
+- Noise Floor: ${noiseFloor.noiseFloorDb} dB
+- SNR: ${noiseFloor.signalToNoiseDb} dB
+
+**Actions:**
+${gainRecommendations.map(r => `- ${r}`).join('\n')}
+
+---
+
+### 2. SUBTRACTIVE EQ (Problem Frequencies)
+**Detected Issues:** ${detectedProblems.length}
+**Overall Quality:** ${eqProblems.overallQuality.toUpperCase()}
+
+${detectedProblems.length > 0 ? detectedProblems.map(p => `- **${p.type.toUpperCase()}** (${p.frequencyRange.min}-${p.frequencyRange.max}Hz): ${p.severity}`).join('\n') : '- No significant EQ problems detected'}
+
+**Actions:**
+${subEqRecommendations.length > 0 ? subEqRecommendations.map(r => `- ${r}`).join('\n') : '- No subtractive EQ needed'}
+
+---
+
+### 3. DYNAMICS
+**Dynamic Range:** ${dynamics.dynamicRangeDb} dB
+**Compression Needed:** ${dynamics.needsCompression ? 'YES' : 'NO'} (${dynamics.compressionUrgency})
+**Transient Character:** ${transients.attackCharacter.toUpperCase()}
+**Sibilance:** ${sibilance.hasSibilance ? `${sibilance.severity.toUpperCase()} at ${sibilance.peakFrequencyHz}Hz` : 'None detected'}
+
+**Actions:**
+${dynamicsRecommendations.length > 0 ? dynamicsRecommendations.map(r => `- ${r}`).join('\n') : '- No dynamics processing needed'}
+
+---
+
+### 4. ADDITIVE EQ (Character)
+**Actions:**
+${addEqRecommendations.length > 0 ? addEqRecommendations.map(r => `- ${r}`).join('\n') : '- Consider EQ boosts for character after other processing'}
+
+---
+
+### 5. SPATIAL / STEREO
+**Format:** ${stereoField.isStereo ? 'STEREO' : 'MONO'}
+**Width:** ${stereoField.width.widthCharacter.toUpperCase()} (${stereoField.width.widthPercentage}%)
+**Balance:** ${stereoField.balance.isBalanced ? 'BALANCED' : `${stereoField.balance.panDirection.toUpperCase()} by ${Math.abs(stereoField.balance.differenceDb)}dB`}
+**Phase:** ${stereoField.phase.monoCompatibility.toUpperCase()} mono compatibility
+
+**Actions:**
+${spatialRecommendations.length > 0 ? spatialRecommendations.map(r => `- ${r}`).join('\n') : '- Stereo field is healthy'}
+
+---
+
+### PRIORITY ACTIONS
+${prioritizedRecommendations.length > 0 ? prioritizedRecommendations.join('\n') : 'Audio is ready for mixing!'}`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
 /**
  * Register all audio domain tools
  */
@@ -704,25 +1740,49 @@ export function registerAudioTools(
     captureService?: AudioCaptureService,
     analysisService?: AudioAnalysisService,
     visualizationService?: AudioVisualizationService,
-    fileService?: AudioFileService
+    fileService?: AudioFileService,
+    problemService?: AudioProblemDetectionService,
+    dynamicsService?: AudioDynamicsService,
+    stereoService?: AudioStereoAnalysisService
 ): void {
     // Create default service instances if not provided
     const capture = captureService ?? new AudioCaptureService();
     const analysis = analysisService ?? new AudioAnalysisService();
     const visualization = visualizationService ?? new AudioVisualizationService();
     const file = fileService ?? new AudioFileService();
+    const problem = problemService ?? new AudioProblemDetectionService();
+    const dynamics = dynamicsService ?? new AudioDynamicsService();
+    const stereo = stereoService ?? new AudioStereoAnalysisService();
 
     // Device listing (unchanged)
     registerAudioListDevicesTool(server, capture);
 
-    // Recording tool (NEW)
+    // Recording tool
     registerAudioRecordTool(server, capture, file);
 
-    // Analysis tools (file-based)
+    // Analysis tools (file-based) - Original
     registerAudioAnalyzeSpectrumTool(server, file, analysis, visualization);
     registerAudioGetFrequencyBalanceTool(server, file, analysis, visualization);
     registerAudioGetLoudnessTool(server, file, analysis);
     registerAudioAnalyzeBrightnessTool(server, file, analysis);
     registerAudioAnalyzeHarshnessTool(server, file, analysis);
     registerAudioDetectMaskingTool(server, file, analysis);
+
+    // Problem detection tools
+    registerAudioAnalyzeEqProblemsTool(server, file, problem);
+    registerAudioAnalyzeClippingTool(server, file, problem);
+    registerAudioAnalyzeNoiseFloorTool(server, file, problem);
+
+    // Dynamics analysis tools
+    registerAudioAnalyzeTransientsTool(server, file, dynamics);
+    registerAudioAnalyzeDynamicsTool(server, file, dynamics);
+    registerAudioAnalyzeSibilanceTool(server, file, dynamics);
+    registerAudioAnalyzePumpingTool(server, file, dynamics);
+
+    // Stereo/spatial analysis tools
+    registerAudioAnalyzePhaseTool(server, file, stereo);
+    registerAudioAnalyzeStereoFieldTool(server, file, stereo);
+
+    // Comprehensive mix analysis tool
+    registerAudioAnalyzeMixTool(server, file, analysis, problem, dynamics, stereo);
 }
