@@ -1,7 +1,16 @@
 import { EventEmitter } from 'events';
 import { FFmpegDriver } from './audio-drivers/ffmpeg-driver.js';
 import type { AudioDriver } from './audio-drivers/types.js';
-import type { AudioDevice, AudioCaptureConfig, CapturedAudio, AudioCaptureStatus, AUDIO_DEFAULTS } from '../types/audio.js';
+import type {
+    AudioDevice,
+    AudioCaptureConfig,
+    CapturedAudio,
+    AudioCaptureStatus,
+    AUDIO_DEFAULTS,
+    AudioRecordConfig,
+    AudioRecordResult
+} from '../types/audio.js';
+import { AudioFileService } from './audio-file.js';
 
 // Debug logging (controlled by DEBUG env var)
 const DEBUG = process.env.DEBUG?.includes('audio') || process.env.DEBUG?.includes('capture') || process.env.DEBUG === '*';
@@ -27,7 +36,8 @@ const DEFAULTS: typeof AUDIO_DEFAULTS = {
     maxDurationMs: 30000,
     minDurationMs: 100,
     outputWidth: 800,
-    outputHeight: 400
+    outputHeight: 400,
+    maxRecordingSeconds: 300
 };
 
 /**
@@ -215,6 +225,49 @@ export class AudioCaptureService extends EventEmitter {
                 }
             }, durationMs);
         });
+    }
+
+    /**
+     * Record audio for a specific duration and save to WAV file
+     */
+    async recordToFile(config: AudioRecordConfig, fileService?: AudioFileService): Promise<AudioRecordResult> {
+        const { deviceId, durationSeconds, outputPath, sampleRate = DEFAULTS.sampleRate, channels = DEFAULTS.channels } = config;
+
+        if (durationSeconds <= 0 || durationSeconds > DEFAULTS.maxRecordingSeconds) {
+            throw new Error(`Duration must be between 0 and ${DEFAULTS.maxRecordingSeconds} seconds`);
+        }
+
+        debugLog(`Recording ${durationSeconds}s to file...`);
+
+        const fs = fileService ?? new AudioFileService();
+        fs.ensureRecordingsDir();
+
+        const filePath = outputPath ? fs.resolveFilePath(outputPath) : fs.generateRecordingPath();
+
+        const captureConfig: Partial<AudioCaptureConfig> = {
+            deviceId,
+            sampleRate,
+            channels,
+            bitDepth: 16
+        };
+
+        const audio = await this.captureForDuration(durationSeconds * 1000, captureConfig);
+
+        await fs.writeWavFile(filePath, audio);
+
+        const stats = await import('fs').then(fsModule => fsModule.statSync(filePath));
+
+        debugLog(`Recording saved: ${filePath} (${stats.size} bytes)`);
+
+        return {
+            filePath,
+            durationMs: audio.durationMs,
+            sampleRate: audio.sampleRate,
+            channels: audio.channels,
+            deviceName: audio.deviceName,
+            recordedAt: audio.capturedAt,
+            fileSize: stats.size
+        };
     }
 
     /**
