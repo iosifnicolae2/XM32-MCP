@@ -32,6 +32,20 @@ const debugLog = (...args: unknown[]) => {
 };
 
 /**
+ * Check if value is array-like (Array or TypedArray like Float32Array)
+ * Meyda returns Float32Array for spectrum data, which fails Array.isArray()
+ */
+function isArrayLike(value: unknown): value is ArrayLike<number> {
+    return (
+        value !== null &&
+        typeof value === 'object' &&
+        'length' in value &&
+        typeof (value as { length: unknown }).length === 'number' &&
+        (value as { length: number }).length > 0
+    );
+}
+
+/**
  * Default configuration values
  */
 const DEFAULTS: typeof AUDIO_DEFAULTS = {
@@ -109,7 +123,7 @@ export class AudioAnalysisService {
 
             // Extract amplitude spectrum using Meyda
             const features = Meyda.extract(['amplitudeSpectrum'], frameData);
-            if (features && Array.isArray(features.amplitudeSpectrum)) {
+            if (features && isArrayLike(features.amplitudeSpectrum)) {
                 magnitudes.push(new Float32Array(features.amplitudeSpectrum));
             } else {
                 magnitudes.push(new Float32Array(numBins));
@@ -150,8 +164,8 @@ export class AudioAnalysisService {
 
             // Meyda's melBands feature
             const features = Meyda.extract(['melBands'], frameData);
-            if (features && Array.isArray(features.melBands)) {
-                melBands.push(new Float32Array(features.melBands));
+            if (features && isArrayLike(features.melBands)) {
+                melBands.push(new Float32Array(features.melBands as ArrayLike<number>));
             } else {
                 melBands.push(new Float32Array(this.numMelBands));
             }
@@ -201,9 +215,10 @@ export class AudioAnalysisService {
             const frameData = samples.slice(startSample, startSample + this.fftSize);
 
             const features = Meyda.extract(['amplitudeSpectrum'], frameData);
-            if (features && Array.isArray(features.amplitudeSpectrum)) {
-                for (let i = 0; i < numBins && i < features.amplitudeSpectrum.length; i++) {
-                    avgSpectrum[i] += features.amplitudeSpectrum[i];
+            if (features && isArrayLike(features.amplitudeSpectrum)) {
+                const spectrum = features.amplitudeSpectrum as ArrayLike<number>;
+                for (let i = 0; i < numBins && i < spectrum.length; i++) {
+                    avgSpectrum[i] += spectrum[i];
                 }
             }
         }
@@ -421,8 +436,8 @@ export class AudioAnalysisService {
             const frameData = samples.slice(startSample, startSample + this.fftSize);
 
             const features = Meyda.extract(['mfcc'], frameData);
-            if (features && Array.isArray(features.mfcc)) {
-                mfccFrames.push(features.mfcc);
+            if (features && isArrayLike(features.mfcc)) {
+                mfccFrames.push(Array.from(features.mfcc as ArrayLike<number>));
             }
         }
 
