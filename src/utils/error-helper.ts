@@ -33,10 +33,12 @@ export class X32Error {
      * ```
      */
     static notConnected(): string {
-        return `Not connected to X32/M32 mixer.
+        return `Not connected to mixer.
 
 Use connection_connect first:
-  connection_connect with host="192.168.1.100" and port=10023`;
+  connection_connect with host="<IP>" and deviceType="XR18" (or X32)
+
+Or set environment variables: MIXER_HOST, MIXER_TYPE, MIXER_PORT`;
     }
 
     /**
