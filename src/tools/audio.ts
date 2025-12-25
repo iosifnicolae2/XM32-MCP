@@ -4,7 +4,12 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { AudioCaptureService } from '../services/audio-capture.js';
 import { AudioAnalysisService } from '../services/audio-analysis.js';
 import { AudioVisualizationService } from '../services/audio-visualization.js';
-import type { AnalysisImages } from '../types/audio.js';
+import { AudioFileService } from '../services/audio-file.js';
+import type { AnalysisImages, AUDIO_DEFAULTS } from '../types/audio.js';
+
+const DEFAULTS: Pick<typeof AUDIO_DEFAULTS, 'maxRecordingSeconds'> = {
+    maxRecordingSeconds: 300
+};
 
 /**
  * Audio domain tools
@@ -20,7 +25,11 @@ const AudioError = {
     notCapturing: () => 'No audio capture in progress. Start capture first with audio_capture_start.',
     captureFailed: (msg: string) => `Audio capture failed: ${msg}`,
     analysisFailed: (msg: string) => `Audio analysis failed: ${msg}`,
-    invalidDuration: (min: number, max: number) => `Duration must be between ${min}ms and ${max}ms.`
+    invalidDuration: (min: number, max: number) => `Duration must be between ${min}ms and ${max}ms.`,
+    fileNotFound: (path: string) => `Audio file not found: ${path}`,
+    invalidWavFormat: (details: string) => `Invalid WAV file: ${details}`,
+    recordingFailed: (msg: string) => `Recording failed: ${msg}`,
+    fileReadFailed: (msg: string) => `Failed to read audio file: ${msg}`
 };
 
 /**
@@ -96,12 +105,104 @@ function registerAudioListDevicesTool(server: McpServer, captureService: AudioCa
 }
 
 /**
+ * Register audio_record tool
+ * Record audio to WAV file
+ */
+function registerAudioRecordTool(server: McpServer, captureService: AudioCaptureService, fileService: AudioFileService): void {
+    server.registerTool(
+        'audio_record',
+        {
+            title: 'Record Audio to File',
+            description:
+                'Record audio from a capture device for a specified duration and save to WAV file. ' +
+                'Use audio_list_devices first to find available devices. ' +
+                'The recorded file can then be analyzed using other audio analysis tools (audio_analyze_spectrum, audio_get_frequency_balance, etc.).',
+            inputSchema: {
+                deviceId: z
+                    .union([z.string(), z.number()])
+                    .optional()
+                    .describe('Device ID or name to record from. Defaults to first available loopback device.'),
+                durationSeconds: z
+                    .number()
+                    .min(0.1)
+                    .max(DEFAULTS.maxRecordingSeconds)
+                    .describe(`Recording duration in seconds (0.1-${DEFAULTS.maxRecordingSeconds}). Maximum 5 minutes.`),
+                outputPath: z
+                    .string()
+                    .optional()
+                    .describe('Output file path for WAV file. If not specified, saves to default recordings directory with timestamp.'),
+                sampleRate: z.number().default(44100).describe('Sample rate in Hz (default: 44100)'),
+                channels: z.number().min(1).max(2).default(2).describe('Number of channels: 1 (mono) or 2 (stereo). Default: 2')
+            },
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: false,
+                openWorldHint: true
+            }
+        },
+        async ({ deviceId, durationSeconds, outputPath, sampleRate = 44100, channels = 2 }): Promise<CallToolResult> => {
+            try {
+                const result = await captureService.recordToFile(
+                    {
+                        deviceId: deviceId !== undefined ? Number(deviceId) : undefined,
+                        durationSeconds,
+                        outputPath,
+                        sampleRate,
+                        channels
+                    },
+                    fileService
+                );
+
+                const fileSizeKB = (result.fileSize / 1024).toFixed(1);
+                const durationFormatted = (result.durationMs / 1000).toFixed(2);
+
+                const resultText = `## Recording Complete
+
+**File:** ${result.filePath}
+
+**Details:**
+- Duration: ${durationFormatted} seconds
+- Sample Rate: ${result.sampleRate} Hz
+- Channels: ${result.channels}
+- Device: ${result.deviceName}
+- File Size: ${fileSizeKB} KB
+- Recorded At: ${result.recordedAt}
+
+**Next Steps:**
+Use this file with audio analysis tools:
+- \`audio_analyze_spectrum\` - Full spectrum analysis
+- \`audio_get_frequency_balance\` - Frequency distribution
+- \`audio_get_loudness\` - Level measurement
+- \`audio_analyze_brightness\` - Tonal balance
+- \`audio_analyze_harshness\` - Harshness detection
+- \`audio_detect_masking\` - Frequency masking issues`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.recordingFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+/**
  * Register audio_analyze_spectrum tool
- * Full spectrum analysis with visualization
+ * Full spectrum analysis with visualization (file-based)
  */
 function registerAudioAnalyzeSpectrumTool(
     server: McpServer,
-    captureService: AudioCaptureService,
+    fileService: AudioFileService,
     analysisService: AudioAnalysisService,
     visualizationService: AudioVisualizationService
 ): void {
@@ -110,33 +211,33 @@ function registerAudioAnalyzeSpectrumTool(
         {
             title: 'Analyze Audio Spectrum',
             description:
-                'Perform comprehensive spectrum analysis on captured audio. Captures audio for the specified duration, extracts STFT spectrogram, mel-spectrogram, and key spectral features. Optionally generates PNG visualization images.',
+                'Perform comprehensive spectrum analysis on a recorded WAV file. Extracts STFT spectrogram, mel-spectrogram, and key spectral features. ' +
+                'Use audio_record first to create a recording, then pass the file path here.',
             inputSchema: {
-                durationMs: z
-                    .number()
-                    .min(100)
-                    .max(30000)
-                    .default(500)
-                    .describe('Capture duration in milliseconds (100-30000). Default: 500ms for quick analysis.'),
-                deviceId: z
-                    .union([z.string(), z.number()])
-                    .optional()
-                    .describe('Device ID or name to capture from. Defaults to first available loopback device.'),
+                filePath: z.string().describe('Path to the WAV file to analyze. Can be absolute or relative to recordings directory.'),
                 generateImages: z.boolean().default(true).describe('Generate PNG visualizations of the spectrogram and analysis'),
                 outputPath: z.string().optional().describe('Output path for generated images (relative or absolute directory/file path)')
             },
             annotations: {
                 readOnlyHint: true,
                 destructiveHint: false,
-                idempotentHint: false,
+                idempotentHint: true,
                 openWorldHint: true
             }
         },
-        async ({ durationMs = 500, deviceId, generateImages = true, outputPath }): Promise<CallToolResult> => {
+        async ({ filePath, generateImages = true, outputPath }): Promise<CallToolResult> => {
             try {
-                // Capture audio
-                const captureConfig = deviceId !== undefined ? { deviceId: Number(deviceId) } : undefined;
-                const audio = await captureService.captureForDuration(durationMs, captureConfig);
+                // Validate and read file
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                // Read audio from file
+                const audio = await fileService.readWavFile(filePath);
 
                 // Analyze
                 const analysis = analysisService.analyzeSpectrum(audio);
@@ -180,8 +281,10 @@ function registerAudioAnalyzeSpectrumTool(
 
                 let resultText = `## Spectrum Analysis Results
 
-**Capture Info:**
-- Device: ${metadata.deviceName}
+**File:** ${fileService.resolveFilePath(filePath)}
+
+**Audio Info:**
+- Source: ${metadata.deviceName}
 - Duration: ${metadata.durationMs}ms
 - Sample Rate: ${metadata.sampleRate} Hz
 - FFT Size: ${metadata.fftSize}
@@ -223,11 +326,11 @@ ${frequencyBalance.recommendation ? `- Recommendation: ${frequencyBalance.recomm
 }
 
 /**
- * Register audio_get_frequency_balance tool
+ * Register audio_get_frequency_balance tool (file-based)
  */
 function registerAudioGetFrequencyBalanceTool(
     server: McpServer,
-    captureService: AudioCaptureService,
+    fileService: AudioFileService,
     analysisService: AudioAnalysisService,
     visualizationService: AudioVisualizationService
 ): void {
@@ -236,29 +339,32 @@ function registerAudioGetFrequencyBalanceTool(
         {
             title: 'Get Frequency Balance',
             description:
-                'Analyze the frequency balance of captured audio across standard frequency bands (sub-bass, bass, low-mid, mid, high-mid, presence, brilliance). Returns energy distribution, balance assessment, and mixing recommendations.',
+                'Analyze the frequency balance of a recorded WAV file across standard frequency bands (sub-bass, bass, low-mid, mid, high-mid, presence, brilliance). ' +
+                'Returns energy distribution, balance assessment, and mixing recommendations. Use audio_record first to create a recording.',
             inputSchema: {
-                durationMs: z
-                    .number()
-                    .min(100)
-                    .max(10000)
-                    .default(1000)
-                    .describe('Capture duration in milliseconds (100-10000). Default: 1000ms.'),
-                deviceId: z.union([z.string(), z.number()]).optional().describe('Device ID or name to capture from'),
+                filePath: z.string().describe('Path to the WAV file to analyze. Can be absolute or relative to recordings directory.'),
                 generateImage: z.boolean().default(true).describe('Generate a PNG bar chart of frequency balance'),
                 outputPath: z.string().optional().describe('Output path for generated image')
             },
             annotations: {
                 readOnlyHint: true,
                 destructiveHint: false,
-                idempotentHint: false,
+                idempotentHint: true,
                 openWorldHint: true
             }
         },
-        async ({ durationMs = 1000, deviceId, generateImage = true, outputPath }): Promise<CallToolResult> => {
+        async ({ filePath, generateImage = true, outputPath }): Promise<CallToolResult> => {
             try {
-                const captureConfig = deviceId !== undefined ? { deviceId: Number(deviceId) } : undefined;
-                const audio = await captureService.captureForDuration(durationMs, captureConfig);
+                // Validate and read file
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
                 const result = analysisService.analyzeFrequencyBalance(audio);
 
                 let imagePath: string | undefined;
@@ -276,6 +382,8 @@ function registerAudioGetFrequencyBalanceTool(
                     .join('\n');
 
                 let resultText = `## Frequency Balance Analysis
+
+**File:** ${fileService.resolveFilePath(filePath)}
 
 **Energy Distribution:**
 ${bandsText}
@@ -308,38 +416,43 @@ ${result.recommendation ? `\n**Recommendation:** ${result.recommendation}` : ''}
 }
 
 /**
- * Register audio_get_loudness tool
+ * Register audio_get_loudness tool (file-based)
  */
-function registerAudioGetLoudnessTool(server: McpServer, captureService: AudioCaptureService, analysisService: AudioAnalysisService): void {
+function registerAudioGetLoudnessTool(server: McpServer, fileService: AudioFileService, analysisService: AudioAnalysisService): void {
     server.registerTool(
         'audio_get_loudness',
         {
             title: 'Get Audio Loudness',
             description:
-                'Measure the loudness (RMS) of captured audio. Returns average RMS, peak level, dynamic range, and crest factor. Useful for level checking and gain staging.',
+                'Measure the loudness (RMS) of a recorded WAV file. Returns average RMS, peak level, dynamic range, and crest factor. ' +
+                'Useful for level checking and gain staging. Use audio_record first to create a recording.',
             inputSchema: {
-                durationMs: z
-                    .number()
-                    .min(100)
-                    .max(10000)
-                    .default(1000)
-                    .describe('Capture duration in milliseconds (100-10000). Default: 1000ms.'),
-                deviceId: z.union([z.string(), z.number()]).optional().describe('Device ID or name to capture from')
+                filePath: z.string().describe('Path to the WAV file to analyze. Can be absolute or relative to recordings directory.')
             },
             annotations: {
                 readOnlyHint: true,
                 destructiveHint: false,
-                idempotentHint: false,
+                idempotentHint: true,
                 openWorldHint: true
             }
         },
-        async ({ durationMs = 1000, deviceId }): Promise<CallToolResult> => {
+        async ({ filePath }): Promise<CallToolResult> => {
             try {
-                const captureConfig = deviceId !== undefined ? { deviceId: Number(deviceId) } : undefined;
-                const audio = await captureService.captureForDuration(durationMs, captureConfig);
+                // Validate and read file
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
                 const result = analysisService.measureLoudness(audio);
 
                 const resultText = `## Loudness Measurement
+
+**File:** ${fileService.resolveFilePath(filePath)}
 
 **Levels:**
 - RMS Level: ${result.rmsDb} dB (linear: ${result.rmsLinear.toFixed(4)})
@@ -373,44 +486,45 @@ ${result.dynamicRangeDb < 6 ? '- Low dynamic range - audio may be over-compresse
 }
 
 /**
- * Register audio_analyze_brightness tool
+ * Register audio_analyze_brightness tool (file-based)
  */
-function registerAudioAnalyzeBrightnessTool(
-    server: McpServer,
-    captureService: AudioCaptureService,
-    analysisService: AudioAnalysisService
-): void {
+function registerAudioAnalyzeBrightnessTool(server: McpServer, fileService: AudioFileService, analysisService: AudioAnalysisService): void {
     server.registerTool(
         'audio_analyze_brightness',
         {
             title: 'Analyze Audio Brightness',
             description:
-                'Measure the spectral centroid (brightness) of captured audio. Higher values indicate brighter/treble-heavy sound, lower values indicate warmer/bass-heavy sound. Useful for tonal balance assessment.',
+                'Measure the spectral centroid (brightness) of a recorded WAV file. Higher values indicate brighter/treble-heavy sound, ' +
+                'lower values indicate warmer/bass-heavy sound. Useful for tonal balance assessment. Use audio_record first to create a recording.',
             inputSchema: {
-                durationMs: z
-                    .number()
-                    .min(100)
-                    .max(10000)
-                    .default(1000)
-                    .describe('Capture duration in milliseconds (100-10000). Default: 1000ms.'),
-                deviceId: z.union([z.string(), z.number()]).optional().describe('Device ID or name to capture from')
+                filePath: z.string().describe('Path to the WAV file to analyze. Can be absolute or relative to recordings directory.')
             },
             annotations: {
                 readOnlyHint: true,
                 destructiveHint: false,
-                idempotentHint: false,
+                idempotentHint: true,
                 openWorldHint: true
             }
         },
-        async ({ durationMs = 1000, deviceId }): Promise<CallToolResult> => {
+        async ({ filePath }): Promise<CallToolResult> => {
             try {
-                const captureConfig = deviceId !== undefined ? { deviceId: Number(deviceId) } : undefined;
-                const audio = await captureService.captureForDuration(durationMs, captureConfig);
+                // Validate and read file
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
                 const result = analysisService.analyzeBrightness(audio);
 
                 const trendEmoji = result.trend === 'bright' ? '☀️' : result.trend === 'warm' ? '🔥' : '⚖️';
 
                 const resultText = `## Brightness Analysis ${trendEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
 
 **Spectral Centroid:**
 - Average: ${result.centroidHz} Hz
@@ -439,44 +553,45 @@ ${result.recommendation ? `\n**Recommendation:** ${result.recommendation}` : ''}
 }
 
 /**
- * Register audio_analyze_harshness tool
+ * Register audio_analyze_harshness tool (file-based)
  */
-function registerAudioAnalyzeHarshnessTool(
-    server: McpServer,
-    captureService: AudioCaptureService,
-    analysisService: AudioAnalysisService
-): void {
+function registerAudioAnalyzeHarshnessTool(server: McpServer, fileService: AudioFileService, analysisService: AudioAnalysisService): void {
     server.registerTool(
         'audio_analyze_harshness',
         {
             title: 'Analyze Audio Harshness',
             description:
-                'Measure spectral flux to detect harshness and roughness in audio. High values may indicate harsh frequencies (typically 2-4 kHz) that could benefit from EQ adjustment or de-essing.',
+                'Measure spectral flux to detect harshness and roughness in a recorded WAV file. High values may indicate harsh frequencies ' +
+                '(typically 2-4 kHz) that could benefit from EQ adjustment or de-essing. Use audio_record first to create a recording.',
             inputSchema: {
-                durationMs: z
-                    .number()
-                    .min(100)
-                    .max(10000)
-                    .default(1000)
-                    .describe('Capture duration in milliseconds (100-10000). Default: 1000ms.'),
-                deviceId: z.union([z.string(), z.number()]).optional().describe('Device ID or name to capture from')
+                filePath: z.string().describe('Path to the WAV file to analyze. Can be absolute or relative to recordings directory.')
             },
             annotations: {
                 readOnlyHint: true,
                 destructiveHint: false,
-                idempotentHint: false,
+                idempotentHint: true,
                 openWorldHint: true
             }
         },
-        async ({ durationMs = 1000, deviceId }): Promise<CallToolResult> => {
+        async ({ filePath }): Promise<CallToolResult> => {
             try {
-                const captureConfig = deviceId !== undefined ? { deviceId: Number(deviceId) } : undefined;
-                const audio = await captureService.captureForDuration(durationMs, captureConfig);
+                // Validate and read file
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
                 const result = analysisService.analyzeHarshness(audio);
 
                 const trendEmoji = result.harshnessTrend === 'harsh' ? '⚠️' : result.harshnessTrend === 'moderate' ? '📊' : '✅';
 
                 const resultText = `## Harshness Analysis ${trendEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
 
 **Spectral Flux:**
 - Average: ${result.fluxAverage}
@@ -505,41 +620,39 @@ ${result.recommendation ? `\n**Recommendation:** ${result.recommendation}` : ''}
 }
 
 /**
- * Register audio_detect_masking tool
+ * Register audio_detect_masking tool (file-based)
  */
-function registerAudioDetectMaskingTool(
-    server: McpServer,
-    captureService: AudioCaptureService,
-    analysisService: AudioAnalysisService
-): void {
+function registerAudioDetectMaskingTool(server: McpServer, fileService: AudioFileService, analysisService: AudioAnalysisService): void {
     server.registerTool(
         'audio_detect_masking',
         {
             title: 'Detect Frequency Masking',
             description:
-                'Use MFCC analysis to detect potential frequency masking issues where instruments/voices may be competing for the same frequency space. Helps identify areas where EQ separation or panning adjustments may improve clarity.',
+                'Use MFCC analysis to detect potential frequency masking issues in a recorded WAV file where instruments/voices may be ' +
+                'competing for the same frequency space. Helps identify areas where EQ separation or panning adjustments may improve clarity. ' +
+                'Use audio_record first to create a recording.',
             inputSchema: {
-                durationMs: z
-                    .number()
-                    .min(500)
-                    .max(30000)
-                    .default(2000)
-                    .describe(
-                        'Capture duration in milliseconds (500-30000). Longer durations give more accurate results. Default: 2000ms.'
-                    ),
-                deviceId: z.union([z.string(), z.number()]).optional().describe('Device ID or name to capture from')
+                filePath: z.string().describe('Path to the WAV file to analyze. Can be absolute or relative to recordings directory.')
             },
             annotations: {
                 readOnlyHint: true,
                 destructiveHint: false,
-                idempotentHint: false,
+                idempotentHint: true,
                 openWorldHint: true
             }
         },
-        async ({ durationMs = 2000, deviceId }): Promise<CallToolResult> => {
+        async ({ filePath }): Promise<CallToolResult> => {
             try {
-                const captureConfig = deviceId !== undefined ? { deviceId: Number(deviceId) } : undefined;
-                const audio = await captureService.captureForDuration(durationMs, captureConfig);
+                // Validate and read file
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                const audio = await fileService.readWavFile(filePath);
                 const result = analysisService.detectMasking(audio);
 
                 const riskEmoji = result.overallMaskingRisk === 'high' ? '🔴' : result.overallMaskingRisk === 'medium' ? '🟡' : '🟢';
@@ -552,6 +665,8 @@ function registerAudioDetectMaskingTool(
                 }
 
                 const resultText = `## Frequency Masking Detection ${riskEmoji}
+
+**File:** ${fileService.resolveFilePath(filePath)}
 
 **Overall Masking Risk:** ${result.overallMaskingRisk.toUpperCase()}
 
@@ -588,18 +703,26 @@ export function registerAudioTools(
     server: McpServer,
     captureService?: AudioCaptureService,
     analysisService?: AudioAnalysisService,
-    visualizationService?: AudioVisualizationService
+    visualizationService?: AudioVisualizationService,
+    fileService?: AudioFileService
 ): void {
     // Create default service instances if not provided
     const capture = captureService ?? new AudioCaptureService();
     const analysis = analysisService ?? new AudioAnalysisService();
     const visualization = visualizationService ?? new AudioVisualizationService();
+    const file = fileService ?? new AudioFileService();
 
+    // Device listing (unchanged)
     registerAudioListDevicesTool(server, capture);
-    registerAudioAnalyzeSpectrumTool(server, capture, analysis, visualization);
-    registerAudioGetFrequencyBalanceTool(server, capture, analysis, visualization);
-    registerAudioGetLoudnessTool(server, capture, analysis);
-    registerAudioAnalyzeBrightnessTool(server, capture, analysis);
-    registerAudioAnalyzeHarshnessTool(server, capture, analysis);
-    registerAudioDetectMaskingTool(server, capture, analysis);
+
+    // Recording tool (NEW)
+    registerAudioRecordTool(server, capture, file);
+
+    // Analysis tools (file-based)
+    registerAudioAnalyzeSpectrumTool(server, file, analysis, visualization);
+    registerAudioGetFrequencyBalanceTool(server, file, analysis, visualization);
+    registerAudioGetLoudnessTool(server, file, analysis);
+    registerAudioAnalyzeBrightnessTool(server, file, analysis);
+    registerAudioAnalyzeHarshnessTool(server, file, analysis);
+    registerAudioDetectMaskingTool(server, file, analysis);
 }
