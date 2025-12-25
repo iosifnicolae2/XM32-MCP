@@ -196,41 +196,41 @@ describe('Channel Tools Tests', () => {
 
     describe('channel_solo', () => {
         test('should solo channel', async () => {
-            // Solo on
-            await connection.setChannelParameter(1, 'solo', 1);
-            const result = await connection.getChannelParameter(1, 'solo');
+            // Solo on - X32 uses /-stat/solosw/XX for solo state
+            await connection.setParameter('/-stat/solosw/01', 1);
+            const result = await connection.getParameter('/-stat/solosw/01');
             expect(Number(result)).toBe(1);
         });
 
         test('should unsolo channel', async () => {
             // Solo off
-            await connection.setChannelParameter(1, 'solo', 0);
-            const result = await connection.getChannelParameter(1, 'solo');
+            await connection.setParameter('/-stat/solosw/01', 0);
+            const result = await connection.getParameter('/-stat/solosw/01');
             expect(Number(result)).toBe(0);
         });
 
         test('should toggle solo state', async () => {
             // Solo on
-            await connection.setChannelParameter(1, 'solo', 1);
-            expect(Number(await connection.getChannelParameter(1, 'solo'))).toBe(1);
+            await connection.setParameter('/-stat/solosw/01', 1);
+            expect(Number(await connection.getParameter('/-stat/solosw/01'))).toBe(1);
 
             // Solo off
-            await connection.setChannelParameter(1, 'solo', 0);
-            expect(Number(await connection.getChannelParameter(1, 'solo'))).toBe(0);
+            await connection.setParameter('/-stat/solosw/01', 0);
+            expect(Number(await connection.getParameter('/-stat/solosw/01'))).toBe(0);
 
             // Solo on again
-            await connection.setChannelParameter(1, 'solo', 1);
-            expect(Number(await connection.getChannelParameter(1, 'solo'))).toBe(1);
+            await connection.setParameter('/-stat/solosw/01', 1);
+            expect(Number(await connection.getParameter('/-stat/solosw/01'))).toBe(1);
         });
 
         test('should handle solo for multiple channels', async () => {
-            await connection.setChannelParameter(1, 'solo', 1); // Solo ch1
-            await connection.setChannelParameter(2, 'solo', 1); // Solo ch2
-            await connection.setChannelParameter(3, 'solo', 0); // Unsolo ch3
+            await connection.setParameter('/-stat/solosw/01', 1); // Solo ch1
+            await connection.setParameter('/-stat/solosw/02', 1); // Solo ch2
+            await connection.setParameter('/-stat/solosw/03', 0); // Unsolo ch3
 
-            expect(Number(await connection.getChannelParameter(1, 'solo'))).toBe(1);
-            expect(Number(await connection.getChannelParameter(2, 'solo'))).toBe(1);
-            expect(Number(await connection.getChannelParameter(3, 'solo'))).toBe(0);
+            expect(Number(await connection.getParameter('/-stat/solosw/01'))).toBe(1);
+            expect(Number(await connection.getParameter('/-stat/solosw/02'))).toBe(1);
+            expect(Number(await connection.getParameter('/-stat/solosw/03'))).toBe(0);
         });
     });
 
@@ -289,9 +289,9 @@ describe('Channel Tools Tests', () => {
         test('should handle disconnection during operations', async () => {
             await connection.disconnect();
 
-            await expect(connection.setChannelParameter(1, 'mix/fader', 0.5)).rejects.toThrow('Not connected to X32/M32');
+            await expect(connection.setChannelParameter(1, 'mix/fader', 0.5)).rejects.toThrow('Not connected to mixer');
 
-            await expect(connection.getChannelParameter(1, 'mix/fader')).rejects.toThrow('Not connected to X32/M32');
+            await expect(connection.getChannelParameter(1, 'mix/fader')).rejects.toThrow('Not connected to mixer');
         });
     });
 });

@@ -269,8 +269,10 @@ function registerChannelSoloTool(server: McpServer, connection: X32Connection): 
             }
 
             try {
-                // Note: X32 solo is controlled via /-stat/solosw/XX, not channel parameter
-                // For now, we'll use mix send as a workaround
+                // X32 solo is controlled via /-stat/solosw/XX, not channel parameter
+                const soloValue = solo ? 1 : 0;
+                const channelNum = channel.toString().padStart(2, '0');
+                await connection.setParameter(`/-stat/solosw/${channelNum}`, soloValue);
                 return {
                     content: [
                         {
