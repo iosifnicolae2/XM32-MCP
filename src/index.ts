@@ -55,6 +55,22 @@ async function main() {
         console.error('X32 Error:', error);
     });
 
+    // Auto-connect if MIXER_HOST environment variable is set
+    const autoConnectHost = process.env.MIXER_HOST;
+    if (autoConnectHost) {
+        const { parseDeviceType, getDeviceConfig } = await import('./types/device.js');
+        const deviceType = parseDeviceType(process.env.MIXER_TYPE);
+        const deviceConfig = getDeviceConfig(deviceType);
+        const autoConnectPort = process.env.MIXER_PORT ? parseInt(process.env.MIXER_PORT, 10) : deviceConfig.defaultPort;
+        console.error(`Auto-connecting to ${deviceType} at ${autoConnectHost}:${autoConnectPort}...`);
+        try {
+            await connection.connect({ host: autoConnectHost, port: autoConnectPort, deviceType });
+        } catch (error) {
+            console.error('Auto-connect failed:', error instanceof Error ? error.message : error);
+            console.error('You can manually connect using the connection_connect tool');
+        }
+    }
+
     // Create stdio transport
     const transport = new StdioServerTransport();
 
