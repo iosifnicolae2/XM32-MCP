@@ -353,47 +353,394 @@ When generating spectrograms, save them to the `workdir/` directory with descrip
 
 ---
 
-## Mixing Session Workflow
+## Professional Mixing Phases
 
-Follow this systematic approach for every mixing session:
+**Follow this 5-phase workflow for every mixing session. Do NOT skip phases or rush through them.**
+
+This workflow is based on professional mixing best practices from Sound on Sound, Waves Audio, Pensado's Place, and other authoritative sources.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    MIXING SESSION FLOW                       │
-├─────────────────────────────────────────────────────────────┤
-│  1. Connect to Mixer                                         │
-│     └─> connection_connect                                   │
-│                                                              │
-│  2. Channel-by-Channel Processing                            │
-│     ┌─> Solo Channel                                         │
-│     │   └─> channel_solo                                     │
-│     │                                                        │
-│     ├─> Record Audio Sample (5-10 seconds)                   │
-│     │   └─> audio_record                                     │
-│     │                                                        │
-│     ├─> Analyze Audio                                        │
-│     │   ├─> audio_analyze_eq_problems                        │
-│     │   ├─> audio_analyze_dynamics                           │
-│     │   ├─> audio_generate_spectrogram                       │
-│     │   └─> audio_get_loudness                               │
-│     │                                                        │
-│     ├─> Configure Channel                                    │
-│     │   ├─> channel_set_gain (gain staging)                  │
-│     │   ├─> channel_set_eq_band (EQ)                         │
-│     │   └─> bus_set_send (FX sends)                          │
-│     │                                                        │
-│     ├─> Unsolo and Verify                                    │
-│     │   └─> channel_solo (solo=false)                        │
-│     │                                                        │
-│     └─> Repeat for each channel                              │
-│                                                              │
-│  3. Final Mix Balance                                        │
-│     ├─> audio_analyze_mix                                    │
-│     ├─> audio_analyze_phase                                  │
-│     ├─> channel_set_volume (balance levels)                  │
-│     └─> main_set_volume (master output)                      │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    PROFESSIONAL 5-PHASE MIXING WORKFLOW                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  PHASE 1: Individual Channel Processing (Solo Mode)                          │
+│  ─────────────────────────────────────────────────────                       │
+│  Process in order: Drums → Bass → Guitars/Keys → Other Instruments           │
+│  For each: Solo → Record → Analyze → Configure → Unsolo                      │
+│                              ↓                                               │
+│  PHASE 2: Instrument Group Mixing                                            │
+│  ─────────────────────────────────────────────────────                       │
+│  Mix drums together → Balance kick+bass → Add guitars/keys                   │
+│  Record and analyze instrument mix (NO VOCALS YET)                           │
+│                              ↓                                               │
+│  PHASE 3: Vocal Group Processing (Solo Mode)                                 │
+│  ─────────────────────────────────────────────────────                       │
+│  Lead Vocal first → Backing Vocal Group 1 → Backing Vocal Group 2            │
+│  Each: Solo → Record → Analyze → Configure → Unsolo                          │
+│                              ↓                                               │
+│  PHASE 4: Vocal Group Comparison & EQ Arrangement                            │
+│  ─────────────────────────────────────────────────────                       │
+│  Compare lead vs backing vocals with EQ to avoid masking                     │
+│  Apply frequency inversion, panning strategy, reverb differentiation         │
+│                              ↓                                               │
+│  PHASE 5: Final Mix Balance                                                  │
+│  ─────────────────────────────────────────────────────                       │
+│  All channels together → Record → Analyze → Balance → Finalize               │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## PHASE 1: Individual Channel Processing
+
+**Goal:** Configure each channel in isolation before mixing together.
+
+### Channel Processing Order
+
+Process channels in this specific order (rhythm section first, then melodic):
+
+```
+1. DRUMS (foundation of the mix)
+   ├─> Kick Drum
+   ├─> Snare Drum
+   ├─> Hi-Hat
+   ├─> Toms (Rack → Floor)
+   └─> Overheads
+
+2. BASS (lock in the low-end)
+
+3. GUITARS/KEYS (melodic foundation)
+   ├─> Rhythm Guitars
+   ├─> Lead Guitar
+   └─> Keyboards/Synths
+
+4. OTHER INSTRUMENTS
+   └─> Percussion, pads, effects, etc.
+
+⚠️ DO NOT process vocals in Phase 1!
+   Vocals come in Phase 3, after instruments are mixed.
+```
+
+### Per-Channel Protocol
+
+For **EACH** channel in Phase 1:
+
+1. **Solo the channel**
+   ```
+   channel_solo channel=X, solo=true
+   ```
+
+2. **Record 8-10 seconds** (during performance)
+   ```
+   audio_record duration=10
+   ```
+
+3. **Run FULL analysis suite:**
+   - `audio_analyze_eq_problems` → Problem frequencies
+   - `audio_analyze_dynamics` → Compression needs
+   - `audio_get_loudness` → Levels and headroom
+   - `audio_generate_spectrogram` → Visual analysis
+   - `audio_analyze_harshness` → Harsh frequencies
+   - `audio_analyze_transients` → Attack characteristics (drums)
+
+4. **Present findings to user, ask preferences**
+
+5. **Configure channel:**
+   - Gain staging (peaks at -10dBFS)
+   - HPF (high-pass filter)
+   - Corrective EQ (cuts first!)
+   - Light compression if needed
+
+6. **Unsolo and document in ANALYSIS.md**
+   ```
+   channel_solo channel=X, solo=false
+   ```
+
+7. **Ask user:** "Ready to move to the next channel?"
+
+---
+
+## PHASE 2: Instrument Group Mixing
+
+**Goal:** Blend instruments together BEFORE adding vocals.
+
+### Step 2.1: Mix Drums as a Unit
+
+Unsolo all drum channels and listen together:
+
+1. Balance kick/snare relationship first
+2. Add hi-hat (should sit back)
+3. Add toms (blend with kit)
+4. Add overheads (cymbals and room)
+5. **Record and analyze the drum bus**
+
+**Ask user:** "How does the drum kit sound as a whole? Punchy enough? Too much/little?"
+
+### Step 2.2: Mix Kick + Bass (CRITICAL)
+
+This is the most important relationship in the mix!
+
+**The "Allow One to Win" Principle (Pensado):**
+- Decide: Does KICK or BASS own the sub-bass (30-60Hz)?
+- If kick owns sub-bass → Cut bass at kick's fundamental frequency
+- If bass owns sub-bass → Cut kick's sub-bass, boost kick attack (3-5kHz)
+
+**Frequency Carving:**
+```
+Kick Drum:
+├─> Fundamental: 50-100Hz (the "thump")
+├─> Body: 100-250Hz
+└─> Attack: 2.5-5kHz (the "click")
+
+Bass Guitar/Synth:
+├─> Sub: 40-80Hz (feel)
+├─> Fundamental: 80-200Hz (note definition)
+└─> Growl: 700Hz-1kHz (cut-through)
+```
+
+**Create a pocket:** Apply slight EQ notch in bass at kick's fundamental frequency (e.g., -2dB at 60Hz Q=3)
+
+### Step 2.3: Add Guitars/Keys
+
+1. Balance rhythm guitars against drum/bass foundation
+2. Pan guitars (L/R spread: 75-100%)
+3. Add lead guitar/keys (leave CENTER space for vocals!)
+4. HPF everything at 80-100Hz to clean up low-end
+
+### Step 2.4: Record Instrument Mix
+
+**Before adding vocals:**
+1. Record 15-20 seconds of the instrument mix
+2. Run full analysis:
+   ```
+   audio_analyze_mix
+   audio_analyze_phase
+   audio_get_frequency_balance
+   audio_generate_spectrogram
+   ```
+3. Check for problems:
+   - Muddy low-end?
+   - Harsh upper-mids?
+   - Phase issues?
+   - Frequency masking?
+
+**Ask user:** "How does the instrumental bed sound? Ready to add vocals?"
+
+---
+
+## PHASE 3: Vocal Group Processing
+
+**Goal:** Process each vocal in isolation, starting with the most important one.
+
+### Vocal Processing Order
+
+```
+1. LEAD VOCAL (highest priority - process first!)
+   └─> This is the star of the mix
+
+2. BACKING VOCAL GROUP 1
+   └─> e.g., Verse harmonies, main BVs
+
+3. BACKING VOCAL GROUP 2
+   └─> e.g., Chorus harmonies, gang vocals
+
+4. ADDITIONAL VOCAL LAYERS
+   └─> Doubles, ad-libs, effects
+```
+
+### Lead Vocal Protocol
+
+The lead vocal is the MOST IMPORTANT element. Take extra care:
+
+1. **Solo lead vocal**
+2. **Record 8-10 seconds**
+3. **Run comprehensive analysis:**
+   - `audio_analyze_eq_problems`
+   - `audio_analyze_sibilance` → De-esser needs!
+   - `audio_analyze_dynamics`
+   - `audio_get_loudness`
+   - `audio_generate_spectrogram`
+
+4. **Configure lead vocal:**
+   - HPF at 80-100Hz (remove rumble)
+   - Cut mud at 200-350Hz if needed
+   - **Presence boost at 3kHz** (+1 to +3dB)
+   - **Air boost at 10kHz+** (shelf +1 to +2dB)
+   - Compression: 3:1 ratio, 3-6dB gain reduction
+
+5. **Ask user for tonal preference:** "Brighter? Warmer? More present?"
+
+### Backing Vocal Protocol
+
+Process backing vocals AFTER lead is configured:
+
+1. **Solo backing vocal group**
+2. **Record and analyze**
+3. **Configure with DIFFERENT EQ than lead:**
+   - HPF at **300Hz** (higher than lead! Reserves low-mids for lead)
+   - **LPF at 5-6kHz** (reserves brightness for lead)
+   - Less presence boost than lead
+   - More compression than lead (4:1, -6 to -8dB GR)
+
+---
+
+## PHASE 4: Vocal Group Comparison & EQ Arrangement
+
+**Goal:** Create clear separation between lead and backing vocals to avoid masking.
+
+### The Frequency Inversion Technique
+
+Whatever you BOOST on lead vocal, CUT on backing vocals (and vice versa):
+
+| Frequency | Lead Vocal | Backing Vocals |
+|-----------|------------|----------------|
+| 150-250Hz | Keep (body) | HPF removes |
+| 300Hz | Slight cut | Already HPF'd |
+| 3kHz | **BOOST +2dB** | **CUT -2dB** |
+| 5kHz+ | Keep bright | **LPF removes** |
+| 10kHz+ | Air boost | Rolled off |
+
+### EQ Settings Comparison
+
+**Lead Vocal EQ:**
+```
+Band 1: HPF at 80Hz
+Band 2: Cut -2dB at 300Hz Q=2 (reduce mud)
+Band 3: BOOST +2dB at 3kHz Q=1.5 (presence)
+Band 4: Shelf BOOST +1.5dB at 10kHz (air)
+```
+
+**Backing Vocals EQ:**
+```
+Band 1: HPF at 300Hz (HIGHER than lead!)
+Band 2: Cut -2dB at 3kHz Q=2 (OPPOSITE of lead!)
+Band 3: LPF at 6kHz, 12dB/oct slope
+Band 4: (disabled or subtle)
+```
+
+### Panning Strategy (The "Vocal Sandwich")
+
+Create space by strategic panning:
+
+| Vocal Type | Pan Position |
+|------------|--------------|
+| Lead Vocal | **CENTER** (0%) |
+| 2 Backing Vocals | Hard L/R (100%) |
+| 3 Backing Vocals | One center, two L/R |
+| 4 Backing Vocals | Pair at ±100%, pair at ±50% |
+
+### Compression Differences
+
+| Parameter | Lead Vocal | Backing Vocals |
+|-----------|------------|----------------|
+| Ratio | 3:1 | 4:1 to 6:1 |
+| Gain Reduction | 3-6dB | **6-8dB** (more!) |
+| Attack | 15ms | 10ms (faster) |
+| Release | 100ms | 150ms (longer) |
+| Character | Dynamic, present | Glued, consistent |
+
+### Reverb Differentiation (Depth Placement)
+
+Create front-to-back separation:
+
+| Vocal Type | Reverb Type | Decay | Effect |
+|------------|-------------|-------|--------|
+| Lead Vocal | Plate/Room | **0.5-1.5s** | Intimate, upfront |
+| Backing Vocals | Hall | **2-4s** | Recede into space |
+
+**Also consider:** Add subtle chorus/modulation to backing vocals to differentiate them further.
+
+### Final Vocal Comparison
+
+1. **Play lead vocal against backing vocals**
+2. **Ask user:**
+   - "Is the lead vocal clearly in front?"
+   - "Do the backing vocals support without competing?"
+   - "Is there any frequency masking?"
+3. **Record and analyze the vocal blend**
+4. **Adjust until lead is clearly the star**
+
+---
+
+## PHASE 5: Final Mix Balance
+
+**Goal:** Bring everything together and finalize the mix.
+
+### Step 5.1: Full Mix Analysis
+
+1. **Unsolo ALL channels**
+2. **Record 20-30 seconds of full mix**
+3. **Run comprehensive analysis:**
+   ```
+   audio_analyze_mix → Full diagnostic
+   audio_analyze_phase → Mono compatibility
+   audio_analyze_stereo_field → Width and balance
+   audio_get_frequency_balance → Frequency distribution
+   audio_get_loudness → Levels
+   audio_generate_spectrogram → Visual overview
+   ```
+
+### Step 5.2: Check for Issues
+
+| Issue | Symptom | Fix |
+|-------|---------|-----|
+| Phase problems | Correlation < 0.5 | Check stereo sources, flip phase if needed |
+| Muddy | Too much 200-400Hz | HPF more aggressively, cut low-mids |
+| Harsh | Fatiguing highs | Cut 2-8kHz on offending channels |
+| Thin | Lacking body | Check HPF settings, boost 100-200Hz |
+| Unbalanced stereo | L/R imbalance | Adjust pans, check levels |
+| Vocal buried | Lead not clear | Boost presence, cut competing frequencies |
+
+### Step 5.3: Final Level Balance
+
+**Starting point** (relative to kick at 0dB):
+
+| Source | Relative Level | Notes |
+|--------|----------------|-------|
+| Kick | 0dB | Reference point |
+| Bass | -2dB | Supports kick |
+| Snare | -1dB | Cuts through |
+| Hi-Hat | -8dB | Sits back |
+| Overheads | -6dB | Room and cymbals |
+| Guitars | -4dB | Rhythmic support |
+| Keys | -6dB | Fills space |
+| **Lead Vocal** | **+1dB** | Star of the mix |
+| Backing Vocals | -4dB | Supports lead |
+
+### Step 5.4: Set Main Output
+
+```
+main_set_volume level=<target -6dBFS peaks>
+```
+
+**Target levels:**
+- Peak: -6dBFS maximum (preserve headroom)
+- RMS: -18dBFS (reference level)
+- LUFS: Depends on destination (-14 streaming, -23 broadcast)
+
+### Step 5.5: Final Checks
+
+- [ ] Lead vocal is clearly audible and upfront
+- [ ] Kick and bass work together (no fighting)
+- [ ] No frequency masking between instruments
+- [ ] Stereo image is balanced
+- [ ] Phase correlation > 0.5
+- [ ] No clipping on any channel
+- [ ] Master peaks at -6dBFS
+- [ ] User is satisfied with the balance
+
+### Step 5.6: Document Everything
+
+Update ANALYSIS.md with:
+- Final mix spectrogram
+- All channel settings
+- Phase/stereo analysis results
+- User preferences applied
+- Session notes
+
+**Ask user:** "How does the final mix sound? Any adjustments needed?"
 
 ---
 
