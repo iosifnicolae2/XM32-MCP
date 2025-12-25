@@ -289,5 +289,43 @@ export const AUDIO_DEFAULTS = {
     maxDurationMs: 30000,
     minDurationMs: 100,
     outputWidth: 800,
-    outputHeight: 400
+    outputHeight: 400,
+    maxRecordingSeconds: 300
 };
+
+/**
+ * Audio recording configuration
+ */
+export interface AudioRecordConfig {
+    deviceId?: number;
+    durationSeconds: number;
+    outputPath?: string;
+    sampleRate?: number;
+    channels?: number;
+}
+
+/**
+ * Audio recording result
+ */
+export interface AudioRecordResult {
+    filePath: string;
+    durationMs: number;
+    sampleRate: number;
+    channels: number;
+    deviceName: string;
+    recordedAt: string;
+    fileSize: number;
+}
+
+/**
+ * Audio file metadata from reading a WAV file
+ */
+export interface AudioFileInfo {
+    filePath: string;
+    format: 'wav' | 'unknown';
+    sampleRate: number;
+    channels: number;
+    bitDepth: number;
+    durationMs: number;
+    fileSize: number;
+}
