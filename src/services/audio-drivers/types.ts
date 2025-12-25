@@ -21,8 +21,11 @@ export interface AudioDriver {
     /**
      * Start audio capture from a device
      * Returns when capture has started
+     * @param config - Audio capture configuration
+     * @param deviceId - Optional device ID to capture from
+     * @param durationSeconds - Optional duration in seconds (uses FFmpeg -t flag for reliable stopping)
      */
-    startCapture(config: AudioCaptureConfig, deviceId?: number): Promise<void>;
+    startCapture(config: AudioCaptureConfig, deviceId?: number, durationSeconds?: number): Promise<void>;
 
     /**
      * Stop capture and return the captured audio data

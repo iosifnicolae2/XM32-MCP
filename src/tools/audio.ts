@@ -148,7 +148,7 @@ function registerAudioRecordTool(server: McpServer, captureService: AudioCapture
             try {
                 const result = await captureService.recordToFile(
                     {
-                        deviceId: deviceId !== undefined ? Number(deviceId) : undefined,
+                        deviceId: deviceId !== undefined ? (isNaN(Number(deviceId)) ? deviceId : Number(deviceId)) : undefined,
                         durationSeconds,
                         outputPath,
                         sampleRate,

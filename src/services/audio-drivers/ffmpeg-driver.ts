@@ -28,6 +28,8 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
     private currentConfig: AudioCaptureConfig | null = null;
     private currentDeviceName = '';
     private capturing = false;
+    private cachedDevices: AudioDevice[] = [];
+    private captureDuration: number | null = null; // Duration in seconds when using -t flag
 
     /**
      * Check if FFmpeg is available on the system
@@ -50,7 +52,9 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
 
         try {
             const rawDevices = await this.listDevicesForPlatform(format);
-            return rawDevices.map((raw, idx) => this.convertToAudioDevice(raw, idx));
+            const devices = rawDevices.map((raw, idx) => this.convertToAudioDevice(raw, idx));
+            this.cachedDevices = devices;
+            return devices;
         } catch (error) {
             debugLog('Failed to list devices:', error);
             throw new Error(`Failed to list audio devices: ${error instanceof Error ? error.message : String(error)}`);
@@ -148,12 +152,20 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
      */
     private async listWindowsDevices(): Promise<RawDeviceInfo[]> {
         try {
-            const { stderr } = await execAsync('ffmpeg -f dshow -list_devices true -i dummy 2>&1 || true');
-            return this.parseDShowOutput(stderr);
+            // FFmpeg outputs device list to stderr and exits with error code
+            // We need to capture both stdout and stderr
+            const { stdout, stderr } = await execAsync('ffmpeg -f dshow -list_devices true -i dummy 2>&1');
+            const output = stdout || stderr;
+            debugLog('Windows device list output length:', output.length);
+            return this.parseDShowOutput(output);
         } catch (error) {
-            const err = error as { stderr?: string };
-            if (err.stderr) {
-                return this.parseDShowOutput(err.stderr);
+            // FFmpeg always exits with error when listing devices (no input file)
+            // The device list is in stdout (due to 2>&1 redirect) or stderr
+            const err = error as { stdout?: string; stderr?: string };
+            const output = err.stdout || err.stderr || '';
+            debugLog('Windows device list from error:', output.length, 'chars');
+            if (output) {
+                return this.parseDShowOutput(output);
             }
             throw error;
         }
@@ -161,33 +173,57 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
 
     /**
      * Parse DirectShow device list output
+     * Modern FFmpeg format: [dshow @ ...] "Device Name" (audio)
+     * Legacy format: DirectShow audio devices / DirectShow video devices sections
      */
     private parseDShowOutput(output: string): RawDeviceInfo[] {
         const devices: RawDeviceInfo[] = [];
         const lines = output.split('\n');
 
-        let inAudioSection = false;
         let index = 0;
 
-        for (const line of lines) {
-            if (line.includes('DirectShow audio devices')) {
-                inAudioSection = true;
-                continue;
-            }
-            if (line.includes('DirectShow video devices')) {
-                inAudioSection = false;
-                continue;
-            }
+        // Check if using modern format (lines ending with (audio) or (video))
+        const usesModernFormat = lines.some(line => line.includes('(audio)') || line.includes('(video)'));
 
-            if (inAudioSection) {
-                // Match pattern: "Device Name" or [dshow @ ...] "Device Name"
-                const match = line.match(/"(.+?)"/);
-                if (match) {
-                    devices.push({
-                        index: index++,
-                        name: match[1],
-                        type: 'audio'
-                    });
+        if (usesModernFormat) {
+            // Modern format: [dshow @ ...] "Device Name" (audio)
+            for (const line of lines) {
+                // Only process audio devices, skip "Alternative name" lines
+                if (line.includes('(audio)') && !line.includes('Alternative name')) {
+                    // Extract device name from quotes
+                    const match = line.match(/\[dshow[^\]]*\]\s+"([^"]+)"\s+\(audio\)/);
+                    if (match) {
+                        devices.push({
+                            index: index++,
+                            name: match[1],
+                            type: 'audio'
+                        });
+                    }
+                }
+            }
+        } else {
+            // Legacy format with section headers
+            let inAudioSection = false;
+
+            for (const line of lines) {
+                if (line.includes('DirectShow audio devices')) {
+                    inAudioSection = true;
+                    continue;
+                }
+                if (line.includes('DirectShow video devices')) {
+                    inAudioSection = false;
+                    continue;
+                }
+
+                if (inAudioSection) {
+                    const match = line.match(/"(.+?)"/);
+                    if (match) {
+                        devices.push({
+                            index: index++,
+                            name: match[1],
+                            type: 'audio'
+                        });
+                    }
                 }
             }
         }
@@ -308,11 +344,19 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
 
     /**
      * Start audio capture from a device
+     * @param config - Audio capture configuration
+     * @param deviceId - Optional device ID to capture from
+     * @param durationSeconds - Optional duration in seconds (uses FFmpeg -t flag for reliable stopping)
      */
-    async startCapture(config: AudioCaptureConfig, deviceId?: number): Promise<void> {
+    async startCapture(config: AudioCaptureConfig, deviceId?: number, durationSeconds?: number): Promise<void> {
         if (this.capturing) {
             throw new Error('Already capturing audio');
         }
+
+        // List devices first to populate cache (needed for Windows device name lookup)
+        const devices = await this.listDevices();
+        const device = deviceId !== undefined ? devices.find(d => d.id === deviceId) : devices[0];
+        this.currentDeviceName = device?.name ?? 'Unknown Device';
 
         const format = getPlatformAudioFormat();
         const inputDevice = this.buildInputDevice(format, deviceId);
@@ -320,6 +364,7 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
         this.currentConfig = config;
         this.chunks = [];
         this.captureStartTime = Date.now();
+        this.captureDuration = durationSeconds ?? null;
 
         // Build FFmpeg command
         const args = [
@@ -339,12 +384,28 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
             'pipe:1' // Output to stdout
         ];
 
+        // Add duration flag if specified (reliable way to stop recording on all platforms)
+        if (durationSeconds !== undefined && durationSeconds > 0) {
+            // Insert -t before output (after input options)
+            args.splice(args.indexOf('pipe:1'), 0, '-t', String(durationSeconds));
+            debugLog(`Recording for ${durationSeconds} seconds using -t flag`);
+        }
+
         debugLog('Starting FFmpeg capture:', 'ffmpeg', args.join(' '));
 
-        this.process = spawn('ffmpeg', args);
+        // Explicitly configure stdio for reliable pipe handling on all platforms
+        this.process = spawn('ffmpeg', args, {
+            stdio: ['pipe', 'pipe', 'pipe'], // stdin, stdout, stderr all as pipes
+            windowsHide: true // Hide console window on Windows
+        });
 
-        this.process.stdout?.on('data', (chunk: Buffer) => {
+        if (!this.process.stdout) {
+            throw new Error('Failed to create stdout pipe for FFmpeg process');
+        }
+
+        this.process.stdout.on('data', (chunk: Buffer) => {
             this.chunks.push(chunk);
+            debugLog(`Received ${chunk.length} bytes from FFmpeg stdout`);
             this.emit('data', chunk);
         });
 
@@ -361,13 +422,9 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
         });
 
         this.process.on('close', (code: number) => {
-            debugLog(`FFmpeg process closed with code ${code}`);
+            const totalBytes = this.chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+            debugLog(`FFmpeg process closed with code ${code}, total bytes captured: ${totalBytes}`);
         });
-
-        // Get device name for the captured audio metadata
-        const devices = await this.listDevices();
-        const device = deviceId !== undefined ? devices.find(d => d.id === deviceId) : devices[0];
-        this.currentDeviceName = device?.name ?? 'Unknown Device';
 
         this.capturing = true;
         this.emit('started', { deviceId, deviceName: this.currentDeviceName });
@@ -381,10 +438,18 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
             case 'avfoundation':
                 // On macOS, use :deviceId for audio-only (: prefix means audio)
                 return deviceId !== undefined ? `:${deviceId}` : ':0';
-            case 'dshow':
+            case 'dshow': {
                 // On Windows, need to specify device name
-                // TODO: Get device name from deviceId
-                return 'audio="Microphone"';
+                // Note: Don't add quotes here - spawn handles argument passing correctly
+                // Quotes are only needed in shell commands, not with spawn()
+                const device = deviceId !== undefined
+                    ? this.cachedDevices.find(d => d.id === deviceId)
+                    : this.cachedDevices[0];
+                if (!device) {
+                    throw new Error(`No audio device found with id ${deviceId}. Call listDevices() first.`);
+                }
+                return `audio=${device.name}`;
+            }
             case 'pulse':
                 // On Linux with PulseAudio
                 return deviceId !== undefined ? `${deviceId}` : 'default';
@@ -418,7 +483,7 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
                 }
             };
 
-            // Handle case where process already exited
+            // Handle case where process already exited (e.g., when -t duration was used)
             if (this.process?.exitCode !== null) {
                 handleClose();
                 return;
@@ -426,12 +491,45 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
 
             this.process?.once('close', handleClose);
 
-            // Send SIGTERM to stop FFmpeg gracefully
-            this.process?.kill('SIGTERM');
+            // If duration was specified with -t flag, FFmpeg will exit on its own
+            // Just wait for it to finish naturally
+            if (this.captureDuration !== null) {
+                debugLog('Waiting for FFmpeg to finish (duration-based recording)...');
+                // Set a generous timeout (duration + 5 seconds buffer)
+                const timeoutMs = (this.captureDuration * 1000) + 5000;
+                setTimeout(() => {
+                    if (this.capturing && this.process?.exitCode === null) {
+                        debugLog('FFmpeg timeout, force killing...');
+                        this.process?.kill('SIGKILL');
+                    }
+                }, timeoutMs);
+                return;
+            }
+
+            // Stop FFmpeg gracefully (for indefinite recordings without -t flag)
+            // On Windows, SIGTERM doesn't work reliably - try stdin 'q' then SIGTERM
+            if (process.platform === 'win32') {
+                // Try sending 'q' to stdin first
+                try {
+                    this.process?.stdin?.write('q\n');
+                    this.process?.stdin?.end();
+                } catch {
+                    // Ignore stdin errors
+                }
+                // Also send SIGTERM as backup
+                setTimeout(() => {
+                    if (this.capturing && this.process?.exitCode === null) {
+                        this.process?.kill('SIGTERM');
+                    }
+                }, 500);
+            } else {
+                this.process?.kill('SIGTERM');
+            }
 
             // Timeout fallback
             setTimeout(() => {
-                if (this.capturing) {
+                if (this.capturing && this.process?.exitCode === null) {
+                    debugLog('Force killing FFmpeg process...');
                     this.process?.kill('SIGKILL');
                 }
             }, 2000);
@@ -512,6 +610,7 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
         this.chunks = [];
         this.captureStartTime = 0;
         this.currentConfig = null;
+        this.captureDuration = null;
     }
 }
 

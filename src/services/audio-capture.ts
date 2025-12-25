@@ -132,8 +132,10 @@ export class AudioCaptureService extends EventEmitter {
 
     /**
      * Start audio capture from a device
+     * @param config - Optional audio capture configuration
+     * @param durationSeconds - Optional duration in seconds for reliable stopping
      */
-    async startCapture(config?: Partial<AudioCaptureConfig>): Promise<void> {
+    async startCapture(config?: Partial<AudioCaptureConfig>, durationSeconds?: number): Promise<void> {
         if (this.isCapturing) {
             throw new Error('Already capturing audio');
         }
@@ -159,10 +161,11 @@ export class AudioCaptureService extends EventEmitter {
 
         // Find device
         let device: AudioDevice | null = null;
-        if (this.config.deviceId !== undefined) {
-            device = await this.findDevice(this.config.deviceId);
+        const deviceIdOrName = this.config.deviceId ?? process.env.AUDIO_DEVICE_NAME;
+        if (deviceIdOrName !== undefined) {
+            device = await this.findDevice(deviceIdOrName);
             if (!device) {
-                throw new Error(`Device not found: ${this.config.deviceId}`);
+                throw new Error(`Device not found: ${deviceIdOrName}`);
             }
         } else {
             // Try to get default loopback, fall back to default input
@@ -179,10 +182,10 @@ export class AudioCaptureService extends EventEmitter {
 
         this.currentDevice = device;
         this.captureStartTime = Date.now();
-        debugLog(`Starting capture on device: ${device.name} (ID: ${device.id})`);
+        debugLog(`Starting capture on device: ${device.name} (ID: ${device.id})${durationSeconds ? ` for ${durationSeconds}s` : ''}`);
 
         try {
-            await this.driver.startCapture(this.config, device.id);
+            await this.driver.startCapture(this.config, device.id, durationSeconds);
             this.isCapturing = true;
             this.emit('started', device);
             debugLog('Capture started');
@@ -211,11 +214,18 @@ export class AudioCaptureService extends EventEmitter {
 
     /**
      * Capture audio for a specific duration and return the result
+     * Uses FFmpeg's -t flag for reliable duration-based recording
      */
     async captureForDuration(durationMs: number, config?: Partial<AudioCaptureConfig>): Promise<CapturedAudio> {
-        await this.startCapture(config);
+        const durationSeconds = durationMs / 1000;
+
+        // Pass duration to FFmpeg for reliable recording (uses -t flag)
+        await this.startCapture(config, durationSeconds);
 
         return new Promise((resolve, reject) => {
+            // Wait for duration + small buffer, then stop capture
+            // FFmpeg will have already stopped due to -t flag, but we still need to call stopCapture
+            // to process the buffers and return the audio data
             setTimeout(async () => {
                 try {
                     const audio = await this.stopCapture();
@@ -223,7 +233,7 @@ export class AudioCaptureService extends EventEmitter {
                 } catch (error) {
                     reject(error);
                 }
-            }, durationMs);
+            }, durationMs + 500); // Add 500ms buffer for FFmpeg to finish cleanly
         });
     }
 

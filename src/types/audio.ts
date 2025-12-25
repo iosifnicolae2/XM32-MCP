@@ -19,7 +19,7 @@ export interface AudioDevice {
  * Audio capture configuration
  */
 export interface AudioCaptureConfig {
-    deviceId?: number;
+    deviceId?: number | string;
     sampleRate: number;
     channels: number;
     bitDepth: 16 | 24 | 32;
@@ -297,7 +297,7 @@ export const AUDIO_DEFAULTS = {
  * Audio recording configuration
  */
 export interface AudioRecordConfig {
-    deviceId?: number;
+    deviceId?: number | string;
     durationSeconds: number;
     outputPath?: string;
     sampleRate?: number;
