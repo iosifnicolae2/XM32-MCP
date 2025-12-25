@@ -1,7 +1,7 @@
 import { spawn, ChildProcess, exec } from 'child_process';
 import { promisify } from 'util';
 import { EventEmitter } from 'events';
-import type { AudioDriver, RawDeviceInfo } from './types.js';
+import type { AudioDriver, RawDeviceInfo, DirectRecordResult } from './types.js';
 import { getPlatformAudioFormat } from './types.js';
 import type { AudioDevice, AudioCaptureConfig, CapturedAudio } from '../../types/audio.js';
 
@@ -530,6 +530,84 @@ export class FFmpegDriver extends EventEmitter implements AudioDriver {
         this.chunks = [];
         this.captureStartTime = 0;
         this.currentConfig = null;
+    }
+
+    /**
+     * Record directly to a WAV file without piping through Node.js
+     * This provides highest quality capture by letting FFmpeg handle everything internally
+     */
+    async recordToFile(
+        outputPath: string,
+        durationSeconds: number,
+        config: AudioCaptureConfig,
+        deviceId?: number
+    ): Promise<DirectRecordResult> {
+        if (this.capturing) {
+            throw new Error('Already capturing audio');
+        }
+
+        const format = getPlatformAudioFormat();
+        const inputDevice = this.buildInputDevice(format, deviceId);
+
+        // Get device name for metadata
+        const devices = await this.listDevices();
+        const device = deviceId !== undefined ? devices.find(d => d.id === deviceId) : devices[0];
+        const deviceName = device?.name ?? 'Unknown Device';
+
+        // Build FFmpeg command for direct file output
+        // No Node.js pipe = no buffer boundary issues
+        const args = [
+            '-hide_banner',
+            '-loglevel',
+            'error',
+            '-f',
+            format,
+            '-i',
+            inputDevice,
+            '-t',
+            String(durationSeconds),
+            '-ar',
+            String(config.sampleRate),
+            '-ac',
+            String(config.channels),
+            '-acodec',
+            'pcm_s16le',
+            '-y', // Overwrite output file
+            outputPath
+        ];
+
+        debugLog('Starting direct file recording:', 'ffmpeg', args.join(' '));
+
+        return new Promise((resolve, reject) => {
+            const ffmpeg = spawn('ffmpeg', args);
+
+            let stderrOutput = '';
+
+            ffmpeg.stderr?.on('data', (data: Buffer) => {
+                stderrOutput += data.toString();
+            });
+
+            ffmpeg.on('error', (err: Error) => {
+                debugLog('FFmpeg process error:', err.message);
+                reject(new Error(`FFmpeg failed to start: ${err.message}`));
+            });
+
+            ffmpeg.on('close', (code: number) => {
+                if (code === 0) {
+                    debugLog(`Direct recording completed: ${outputPath}`);
+                    resolve({
+                        filePath: outputPath,
+                        durationSeconds,
+                        sampleRate: config.sampleRate,
+                        channels: config.channels,
+                        deviceName
+                    });
+                } else {
+                    debugLog(`FFmpeg exited with code ${code}: ${stderrOutput}`);
+                    reject(new Error(`FFmpeg exited with code ${code}: ${stderrOutput}`));
+                }
+            });
+        });
     }
 }
 

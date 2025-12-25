@@ -1,6 +1,17 @@
 import type { AudioDevice, AudioCaptureConfig, CapturedAudio } from '../../types/audio.js';
 
 /**
+ * Result of direct file recording
+ */
+export interface DirectRecordResult {
+    filePath: string;
+    durationSeconds: number;
+    sampleRate: number;
+    channels: number;
+    deviceName: string;
+}
+
+/**
  * Audio driver interface
  * Abstraction layer for different audio backends (FFmpeg, SoX, etc.)
  */
@@ -38,6 +49,12 @@ export interface AudioDriver {
      * Check if currently capturing
      */
     isCapturing(): boolean;
+
+    /**
+     * Record directly to a file without piping through Node.js
+     * This provides highest quality capture by letting FFmpeg handle everything
+     */
+    recordToFile?(outputPath: string, durationSeconds: number, config: AudioCaptureConfig, deviceId?: number): Promise<DirectRecordResult>;
 }
 
 /**
