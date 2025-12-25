@@ -9,7 +9,7 @@
                 "MIXER_TYPE": "XR18",
                 "AUDIO_DEVICE_NAME": "BlackHole 2ch",
                 "AUDIO_SAMPLE_RATE": "44100",
-                "AUDIO_OUTPUT_DIR": "./output/audio"
+                "AUDIO_WORKDIR": "./output/audio"
             }
         }
     }

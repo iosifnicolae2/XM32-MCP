@@ -37,7 +37,8 @@ export class AudioFileService {
     private defaultRecordingsDir: string;
 
     constructor(defaultRecordingsDir?: string) {
-        this.defaultRecordingsDir = defaultRecordingsDir || process.env.AUDIO_RECORDINGS_DIR || path.join(process.cwd(), 'recordings');
+        const workDir = process.env.AUDIO_WORKDIR || path.join(process.cwd(), 'output', 'audio');
+        this.defaultRecordingsDir = defaultRecordingsDir || path.join(workDir, 'recordings');
     }
 
     /**
