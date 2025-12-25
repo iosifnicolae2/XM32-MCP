@@ -647,3 +647,90 @@ export interface MixingDiagnostic {
     spatial: SpatialAnalysisSummary;
     summary: MixSummary;
 }
+
+// ============================================================================
+// High-Fidelity Spectrogram Types
+// ============================================================================
+
+/**
+ * Supported FFT sizes for spectrogram generation
+ * Trade-off: Larger = better frequency resolution, worse time resolution
+ */
+export type SpectrogramFFTSize = 1024 | 2048 | 4096 | 8192;
+
+/**
+ * Frequency scale mode for spectrogram rendering
+ */
+export type FrequencyScaleMode = 'linear' | 'logarithmic';
+
+/**
+ * High-fidelity spectrogram render options
+ */
+export interface HiFiSpectrogramOptions {
+    /** Output width in pixels (default: 1920) */
+    width?: number;
+    /** Output height in pixels (default: 1080) */
+    height?: number;
+    /** Colormap for visualization (default: 'viridis') */
+    colormap?: 'viridis' | 'plasma' | 'magma' | 'inferno' | 'grayscale';
+    /** Output file path (directory or full path) */
+    outputPath?: string;
+    /** Custom filename (default: auto-generated with timestamp) */
+    filename?: string;
+    /** Frequency scale mode (default: 'logarithmic') */
+    frequencyScale?: FrequencyScaleMode;
+    /** FFT size for analysis (default: 4096) */
+    fftSize?: SpectrogramFFTSize;
+    /** Hop size as fraction of FFT size (default: 0.25 = 75% overlap) */
+    hopFraction?: number;
+    /** Minimum dB value for dynamic range (default: -90) */
+    minDb?: number;
+    /** Maximum dB value for dynamic range (default: 0) */
+    maxDb?: number;
+    /** Show frequency axis labels (default: true) */
+    showFrequencyLabels?: boolean;
+    /** Show time axis labels (default: true) */
+    showTimeLabels?: boolean;
+    /** Show frequency grid lines (default: true) */
+    showFrequencyGrid?: boolean;
+    /** Show time grid lines (default: true) */
+    showTimeGrid?: boolean;
+    /** Show colorbar legend (default: true) */
+    showColorbar?: boolean;
+    /** Show title (default: true) */
+    showTitle?: boolean;
+    /** Custom title text (default: 'Spectrogram') */
+    title?: string;
+    /** Minimum frequency to display in Hz (default: 20) */
+    minFrequencyHz?: number;
+    /** Maximum frequency to display in Hz (default: Nyquist) */
+    maxFrequencyHz?: number;
+}
+
+/**
+ * Result from high-fidelity spectrogram generation
+ */
+export interface HiFiSpectrogramResult {
+    /** Path to generated image file */
+    imagePath: string;
+    /** Actual width of generated image */
+    width: number;
+    /** Actual height of generated image */
+    height: number;
+    /** FFT size used for analysis */
+    fftSize: number;
+    /** Hop size in samples */
+    hopSize: number;
+    /** Number of time frames */
+    numFrames: number;
+    /** Number of frequency bins */
+    numBins: number;
+    /** Actual dB range used */
+    dbRange: { min: number; max: number };
+    /** Frequency range displayed */
+    frequencyRange: { min: number; max: number };
+    /** Duration of audio in seconds */
+    durationSeconds: number;
+    /** Sample rate of source audio */
+    sampleRate: number;
+}

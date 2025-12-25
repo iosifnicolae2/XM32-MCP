@@ -1467,6 +1467,201 @@ function registerAudioAnalyzeStereoFieldTool(
 }
 
 // ============================================================================
+// High-Fidelity Spectrogram Tool
+// ============================================================================
+
+/**
+ * Register audio_generate_spectrogram tool
+ * High-fidelity spectrogram generation with logarithmic frequency scale
+ */
+function registerAudioGenerateSpectrogramTool(
+    server: McpServer,
+    fileService: AudioFileService,
+    analysisService: AudioAnalysisService,
+    visualizationService: AudioVisualizationService
+): void {
+    server.registerTool(
+        'audio_generate_spectrogram',
+        {
+            title: 'Generate High-Fidelity Spectrogram',
+            description:
+                'Generate a publication-quality spectrogram image from a WAV file with logarithmic frequency scale, ' +
+                'configurable FFT resolution, adjustable dB range, and frequency/time grid overlays. ' +
+                'Default output is 1920x1080 (Full HD). Supports FFT sizes: 1024, 2048, 4096, 8192. ' +
+                'Higher FFT = better frequency resolution but worse time resolution. ' +
+                'Use audio_record first to create a recording.',
+            inputSchema: {
+                filePath: z.string().describe('Path to the WAV file to analyze. Can be absolute or relative.'),
+
+                // Resolution
+                width: z.number().min(400).max(7680).default(1920).describe('Output width in pixels (default: 1920 for Full HD)'),
+                height: z.number().min(300).max(4320).default(1080).describe('Output height in pixels (default: 1080 for Full HD)'),
+
+                // FFT configuration
+                fftSize: z
+                    .enum(['1024', '2048', '4096', '8192'])
+                    .default('4096')
+                    .describe('FFT size: 1024 (best time res), 2048 (balanced), 4096 (good freq res), 8192 (best freq res)'),
+                hopFraction: z
+                    .number()
+                    .min(0.1)
+                    .max(0.5)
+                    .default(0.25)
+                    .describe('Hop size as fraction of FFT (0.25 = 75% overlap for smooth display)'),
+
+                // Frequency scale
+                frequencyScale: z
+                    .enum(['linear', 'logarithmic'])
+                    .default('logarithmic')
+                    .describe('Frequency axis scale: logarithmic (matches human hearing) or linear'),
+                minFrequencyHz: z.number().min(1).default(20).describe('Minimum frequency to display in Hz (default: 20Hz)'),
+                maxFrequencyHz: z.number().optional().describe('Maximum frequency to display in Hz (default: Nyquist frequency)'),
+
+                // dB range
+                minDb: z
+                    .number()
+                    .min(-120)
+                    .max(0)
+                    .default(-90)
+                    .describe('Minimum dB value for dynamic range (default: -90dB, lower shows more detail)'),
+                maxDb: z.number().min(-60).max(20).default(0).describe('Maximum dB value for dynamic range (default: 0dB)'),
+
+                // Visual options
+                colormap: z
+                    .enum(['viridis', 'plasma', 'magma', 'inferno', 'grayscale'])
+                    .default('viridis')
+                    .describe('Color scheme for spectrogram'),
+                showFrequencyGrid: z.boolean().default(true).describe('Show horizontal frequency grid lines'),
+                showTimeGrid: z.boolean().default(true).describe('Show vertical time grid lines'),
+                showColorbar: z.boolean().default(true).describe('Show dB colorbar legend'),
+                showLabels: z.boolean().default(true).describe('Show axis labels and title'),
+                title: z.string().optional().describe('Custom title (default: "Spectrogram")'),
+
+                // Output
+                outputPath: z.string().optional().describe('Output path for the PNG image file')
+            },
+            annotations: {
+                readOnlyHint: false, // Creates a file
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true
+            }
+        },
+        async ({
+            filePath,
+            width = 1920,
+            height = 1080,
+            fftSize = '4096',
+            hopFraction = 0.25,
+            frequencyScale = 'logarithmic',
+            minFrequencyHz = 20,
+            maxFrequencyHz,
+            minDb = -90,
+            maxDb = 0,
+            colormap = 'viridis',
+            showFrequencyGrid = true,
+            showTimeGrid = true,
+            showColorbar = true,
+            showLabels = true,
+            title,
+            outputPath
+        }): Promise<CallToolResult> => {
+            try {
+                // Validate file
+                const validation = await fileService.validateWavFile(filePath);
+                if (!validation.valid) {
+                    return {
+                        content: [{ type: 'text', text: AudioError.invalidWavFormat(validation.error || 'Unknown error') }],
+                        isError: true
+                    };
+                }
+
+                // Read audio
+                const audio = await fileService.readWavFile(filePath);
+
+                // Parse FFT size
+                const fftSizeNum = parseInt(fftSize, 10) as 1024 | 2048 | 4096 | 8192;
+
+                // Compute spectrogram with configured FFT
+                const spectrogram = analysisService.computeSpectrogramWithConfig(audio, fftSizeNum, hopFraction);
+
+                // Determine actual max frequency
+                const actualMaxFrequency = maxFrequencyHz ?? audio.sampleRate / 2;
+
+                // Render high-fidelity spectrogram
+                const result = await visualizationService.renderHiFiSpectrogram(spectrogram, {
+                    width,
+                    height,
+                    colormap,
+                    frequencyScale,
+                    fftSize: fftSizeNum,
+                    hopFraction,
+                    minDb,
+                    maxDb,
+                    showFrequencyLabels: showLabels,
+                    showTimeLabels: showLabels,
+                    showFrequencyGrid,
+                    showTimeGrid,
+                    showColorbar,
+                    showTitle: showLabels,
+                    title: title ?? `Spectrogram - ${fileService.resolveFilePath(filePath).split('/').pop()}`,
+                    minFrequencyHz,
+                    maxFrequencyHz: actualMaxFrequency,
+                    outputPath
+                });
+
+                // Calculate resolution info
+                const freqResolution = (audio.sampleRate / fftSizeNum).toFixed(2);
+                const timeResolution = ((result.hopSize / audio.sampleRate) * 1000).toFixed(2);
+                const overlapPercent = ((1 - hopFraction) * 100).toFixed(0);
+
+                // Format result
+                const resultText = `## High-Fidelity Spectrogram Generated
+
+**Input File:** ${fileService.resolveFilePath(filePath)}
+
+**Output Image:** ${result.imagePath}
+
+**Analysis Parameters:**
+- FFT Size: ${result.fftSize} samples
+- Hop Size: ${result.hopSize} samples (${overlapPercent}% overlap)
+- Time Frames: ${result.numFrames}
+- Frequency Bins: ${result.numBins}
+
+**Display Settings:**
+- Resolution: ${result.width} x ${result.height} pixels
+- Frequency Scale: ${frequencyScale}
+- Frequency Range: ${result.frequencyRange.min} Hz - ${(result.frequencyRange.max / 1000).toFixed(1)} kHz
+- Dynamic Range: ${result.dbRange.min} dB to ${result.dbRange.max} dB
+- Colormap: ${colormap}
+
+**Audio Info:**
+- Duration: ${result.durationSeconds.toFixed(2)} seconds
+- Sample Rate: ${result.sampleRate} Hz
+
+**Resolution:**
+- Frequency: ${freqResolution} Hz per bin
+- Time: ${timeResolution} ms per frame`;
+
+                return {
+                    content: [{ type: 'text', text: resultText }]
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: AudioError.analysisFailed(error instanceof Error ? error.message : String(error))
+                        }
+                    ],
+                    isError: true
+                };
+            }
+        }
+    );
+}
+
+// ============================================================================
 // Comprehensive Mix Diagnostic Tool
 // ============================================================================
 
@@ -1782,6 +1977,9 @@ export function registerAudioTools(
     // Stereo/spatial analysis tools
     registerAudioAnalyzePhaseTool(server, file, stereo);
     registerAudioAnalyzeStereoFieldTool(server, file, stereo);
+
+    // High-fidelity visualization tools
+    registerAudioGenerateSpectrogramTool(server, file, analysis, visualization);
 
     // Comprehensive mix analysis tool
     registerAudioAnalyzeMixTool(server, file, analysis, problem, dynamics, stereo);

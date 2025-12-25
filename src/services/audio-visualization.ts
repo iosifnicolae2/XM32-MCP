@@ -1,7 +1,15 @@
 import { createCanvas } from 'canvas';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SpectrogramData, MelSpectrogramData, FrequencyBalanceResult, RenderOptions, AUDIO_DEFAULTS } from '../types/audio.js';
+import type {
+    SpectrogramData,
+    MelSpectrogramData,
+    FrequencyBalanceResult,
+    RenderOptions,
+    AUDIO_DEFAULTS,
+    HiFiSpectrogramOptions,
+    HiFiSpectrogramResult
+} from '../types/audio.js';
 
 // Debug logging
 const DEBUG = process.env.DEBUG?.includes('audio') || process.env.DEBUG?.includes('viz') || process.env.DEBUG === '*';
@@ -138,6 +146,70 @@ function interpolateColormap(t: number, colors: RGB[]): RGB {
         g: Math.round(c1.g + (c2.g - c1.g) * f),
         b: Math.round(c1.b + (c2.b - c1.b) * f)
     };
+}
+
+// ============================================================================
+// High-Fidelity Spectrogram Helper Functions
+// ============================================================================
+
+/**
+ * Convert frequency to logarithmic Y position (0-1)
+ * Maps minFreq -> 0, maxFreq -> 1 on log scale
+ */
+function freqToLogPosition(freq: number, minFreq: number, maxFreq: number): number {
+    if (freq <= minFreq) return 0;
+    if (freq >= maxFreq) return 1;
+    const logMin = Math.log10(minFreq);
+    const logMax = Math.log10(maxFreq);
+    const logFreq = Math.log10(freq);
+    return (logFreq - logMin) / (logMax - logMin);
+}
+
+/**
+ * Convert logarithmic Y position (0-1) back to frequency
+ */
+function logPositionToFreq(position: number, minFreq: number, maxFreq: number): number {
+    const logMin = Math.log10(minFreq);
+    const logMax = Math.log10(maxFreq);
+    const logFreq = logMin + position * (logMax - logMin);
+    return Math.pow(10, logFreq);
+}
+
+/**
+ * Get standard frequency grid lines for logarithmic scale
+ * Returns ISO 1/3 octave frequencies
+ */
+function getLogFrequencyGridLines(minFreq: number, maxFreq: number): number[] {
+    const standardFreqs = [
+        20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000,
+        6300, 8000, 10000, 12500, 16000, 20000
+    ];
+    return standardFreqs.filter(f => f >= minFreq && f <= maxFreq);
+}
+
+/**
+ * Format frequency for display
+ */
+function formatFrequency(hz: number): string {
+    if (hz >= 1000) {
+        const kHz = hz / 1000;
+        return kHz % 1 === 0 ? `${kHz}k` : `${kHz.toFixed(1)}k`;
+    }
+    return `${Math.round(hz)}`;
+}
+
+/**
+ * Get time grid intervals based on duration
+ * Returns appropriate tick interval in seconds
+ */
+function getTimeGridInterval(durationSeconds: number): number {
+    if (durationSeconds <= 1) return 0.1;
+    if (durationSeconds <= 5) return 0.5;
+    if (durationSeconds <= 10) return 1;
+    if (durationSeconds <= 30) return 2;
+    if (durationSeconds <= 60) return 5;
+    if (durationSeconds <= 300) return 30;
+    return 60;
 }
 
 /**
@@ -624,6 +696,272 @@ export class AudioVisualizationService {
 
         debugLog(`Saved waveform to: ${outputPath}`);
         return outputPath;
+    }
+
+    /**
+     * Render high-fidelity spectrogram with logarithmic frequency scale
+     * Supports configurable FFT size, dB range, and grid overlays
+     */
+    async renderHiFiSpectrogram(data: SpectrogramData, options?: HiFiSpectrogramOptions): Promise<HiFiSpectrogramResult> {
+        // Apply defaults with HD resolution
+        const width = options?.width ?? 1920;
+        const height = options?.height ?? 1080;
+        const colormap = options?.colormap ?? 'viridis';
+        const frequencyScale = options?.frequencyScale ?? 'logarithmic';
+        const minDb = options?.minDb ?? -90;
+        const maxDb = options?.maxDb ?? 0;
+        const showFrequencyLabels = options?.showFrequencyLabels ?? true;
+        const showTimeLabels = options?.showTimeLabels ?? true;
+        const showFrequencyGrid = options?.showFrequencyGrid ?? true;
+        const showTimeGrid = options?.showTimeGrid ?? true;
+        const showColorbar = options?.showColorbar ?? true;
+        const showTitle = options?.showTitle ?? true;
+        const title = options?.title ?? 'Spectrogram';
+        const minFreqHz = options?.minFrequencyHz ?? 20;
+        const maxFreqHz = options?.maxFrequencyHz ?? data.sampleRate / 2;
+
+        const canvas = createCanvas(width, height);
+        const ctx = canvas.getContext('2d');
+
+        // Calculate layout dimensions
+        const leftMargin = showFrequencyLabels ? 80 : 20;
+        const rightMargin = showColorbar ? 100 : 20;
+        const topMargin = showTitle ? 50 : 20;
+        const bottomMargin = showTimeLabels ? 60 : 20;
+
+        const plotWidth = width - leftMargin - rightMargin;
+        const plotHeight = height - topMargin - bottomMargin;
+        const plotX = leftMargin;
+        const plotY = topMargin;
+
+        // Draw dark background
+        ctx.fillStyle = '#0d0d0d';
+        ctx.fillRect(0, 0, width, height);
+
+        // Calculate dB range
+        const dbRange = maxDb - minDb;
+
+        // Create image data for the spectrogram
+        const imageData = ctx.createImageData(plotWidth, plotHeight);
+        const pixels = imageData.data;
+
+        debugLog(`Rendering HiFi spectrogram: ${plotWidth}x${plotHeight}, ${data.numFrames} frames, ${data.numBins} bins`);
+
+        // Render spectrogram with logarithmic frequency mapping
+        for (let py = 0; py < plotHeight; py++) {
+            // Map pixel Y to frequency (inverted: top = high freq)
+            const freqPosition = 1 - py / plotHeight;
+
+            let targetFreqHz: number;
+            if (frequencyScale === 'logarithmic') {
+                targetFreqHz = logPositionToFreq(freqPosition, minFreqHz, maxFreqHz);
+            } else {
+                // Linear scale
+                targetFreqHz = minFreqHz + freqPosition * (maxFreqHz - minFreqHz);
+            }
+
+            // Convert frequency to bin index
+            const binIndex = (targetFreqHz * data.fftSize) / data.sampleRate;
+            const binFloor = Math.floor(binIndex);
+            const binCeil = Math.min(binFloor + 1, data.numBins - 1);
+            const binFrac = binIndex - binFloor;
+
+            for (let px = 0; px < plotWidth; px++) {
+                // Map pixel X to time frame
+                const frameIndex = (px / plotWidth) * (data.numFrames - 1);
+                const frameFloor = Math.floor(frameIndex);
+                const frameCeil = Math.min(frameFloor + 1, data.numFrames - 1);
+                const frameFrac = frameIndex - frameFloor;
+
+                // Bilinear interpolation for smoother rendering
+                const getMagnitude = (frame: number, bin: number): number => {
+                    if (frame < 0 || frame >= data.numFrames || bin < 0 || bin >= data.numBins) {
+                        return 0;
+                    }
+                    return data.magnitudes[frame]?.[bin] || 0;
+                };
+
+                const m00 = getMagnitude(frameFloor, binFloor);
+                const m01 = getMagnitude(frameFloor, binCeil);
+                const m10 = getMagnitude(frameCeil, binFloor);
+                const m11 = getMagnitude(frameCeil, binCeil);
+
+                const magnitude =
+                    (1 - frameFrac) * ((1 - binFrac) * m00 + binFrac * m01) + frameFrac * ((1 - binFrac) * m10 + binFrac * m11);
+
+                // Convert to dB and normalize
+                const dbValue = magnitude > 0 ? 20 * Math.log10(magnitude) : minDb;
+                const normalized = Math.max(0, Math.min(1, (dbValue - minDb) / dbRange));
+
+                // Get color from colormap
+                const color = getColormapColor(normalized, colormap);
+
+                // Set pixel
+                const pixelIndex = (py * plotWidth + px) * 4;
+                pixels[pixelIndex] = color.r;
+                pixels[pixelIndex + 1] = color.g;
+                pixels[pixelIndex + 2] = color.b;
+                pixels[pixelIndex + 3] = 255;
+            }
+        }
+
+        // Draw spectrogram image
+        ctx.putImageData(imageData, plotX, plotY);
+
+        // Draw grid overlays
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+
+        // Frequency grid lines
+        if (showFrequencyGrid) {
+            const gridFreqs = getLogFrequencyGridLines(minFreqHz, maxFreqHz);
+            for (const freq of gridFreqs) {
+                let yPos: number;
+                if (frequencyScale === 'logarithmic') {
+                    yPos = freqToLogPosition(freq, minFreqHz, maxFreqHz);
+                } else {
+                    yPos = (freq - minFreqHz) / (maxFreqHz - minFreqHz);
+                }
+                const y = plotY + plotHeight * (1 - yPos);
+                ctx.beginPath();
+                ctx.moveTo(plotX, y);
+                ctx.lineTo(plotX + plotWidth, y);
+                ctx.stroke();
+            }
+        }
+
+        // Time grid lines
+        if (showTimeGrid) {
+            const durationSeconds = (data.times[data.times.length - 1] || 0) / 1000;
+            const interval = getTimeGridInterval(durationSeconds);
+            for (let t = 0; t <= durationSeconds; t += interval) {
+                const x = plotX + (t / durationSeconds) * plotWidth;
+                ctx.beginPath();
+                ctx.moveTo(x, plotY);
+                ctx.lineTo(x, plotY + plotHeight);
+                ctx.stroke();
+            }
+        }
+
+        // Draw axis border
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(plotX, plotY, plotWidth, plotHeight);
+
+        // Draw labels
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '14px sans-serif';
+
+        // Frequency axis labels
+        if (showFrequencyLabels) {
+            const gridFreqs = getLogFrequencyGridLines(minFreqHz, maxFreqHz);
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            for (const freq of gridFreqs) {
+                let yPos: number;
+                if (frequencyScale === 'logarithmic') {
+                    yPos = freqToLogPosition(freq, minFreqHz, maxFreqHz);
+                } else {
+                    yPos = (freq - minFreqHz) / (maxFreqHz - minFreqHz);
+                }
+                const y = plotY + plotHeight * (1 - yPos);
+                ctx.fillText(formatFrequency(freq), plotX - 10, y);
+            }
+
+            // Y-axis title
+            ctx.save();
+            ctx.translate(20, plotY + plotHeight / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 16px sans-serif';
+            ctx.fillText('Frequency (Hz)', 0, 0);
+            ctx.restore();
+        }
+
+        // Time axis labels
+        if (showTimeLabels) {
+            const durationSeconds = (data.times[data.times.length - 1] || 0) / 1000;
+            const interval = getTimeGridInterval(durationSeconds);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.font = '14px sans-serif';
+            for (let t = 0; t <= durationSeconds; t += interval) {
+                const x = plotX + (t / durationSeconds) * plotWidth;
+                ctx.fillText(t.toFixed(t < 10 ? 1 : 0) + 's', x, plotY + plotHeight + 10);
+            }
+
+            // X-axis title
+            ctx.font = 'bold 16px sans-serif';
+            ctx.fillText('Time', plotX + plotWidth / 2, height - 15);
+        }
+
+        // Draw colorbar
+        if (showColorbar) {
+            const colorbarX = width - rightMargin + 20;
+            const colorbarWidth = 20;
+            const colorbarHeight = plotHeight;
+
+            // Draw colorbar gradient
+            for (let y = 0; y < colorbarHeight; y++) {
+                const normalized = 1 - y / colorbarHeight;
+                const color = getColormapColor(normalized, colormap);
+                ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+                ctx.fillRect(colorbarX, plotY + y, colorbarWidth, 1);
+            }
+
+            // Colorbar border
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(colorbarX, plotY, colorbarWidth, colorbarHeight);
+
+            // Colorbar labels
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#ffffff';
+            const dbTicks = 5;
+            for (let i = 0; i <= dbTicks; i++) {
+                const normalized = i / dbTicks;
+                const dbValue = minDb + normalized * dbRange;
+                const y = plotY + plotHeight * (1 - normalized);
+                ctx.fillText(`${Math.round(dbValue)} dB`, colorbarX + colorbarWidth + 5, y);
+            }
+        }
+
+        // Draw title
+        if (showTitle) {
+            ctx.font = 'bold 24px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(title, width / 2, 15);
+        }
+
+        // Save to file
+        const filename = options?.filename ?? this.generateFilename('hifi-spectrogram');
+        const outputPath = this.resolveOutputPath(filename, options?.outputPath);
+        this.ensureOutputDir(outputPath);
+
+        const buffer = canvas.toBuffer('image/png');
+        fs.writeFileSync(outputPath, buffer);
+
+        debugLog(`Saved high-fidelity spectrogram to: ${outputPath}`);
+
+        const durationSeconds = (data.times[data.times.length - 1] || 0) / 1000;
+
+        return {
+            imagePath: outputPath,
+            width,
+            height,
+            fftSize: data.fftSize,
+            hopSize: data.hopSize,
+            numFrames: data.numFrames,
+            numBins: data.numBins,
+            dbRange: { min: minDb, max: maxDb },
+            frequencyRange: { min: minFreqHz, max: maxFreqHz },
+            durationSeconds,
+            sampleRate: data.sampleRate
+        };
     }
 }
 

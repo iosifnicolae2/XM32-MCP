@@ -145,6 +145,73 @@ export class AudioAnalysisService {
     }
 
     /**
+     * Compute STFT spectrogram with configurable FFT size
+     * @param audio Audio data to analyze
+     * @param customFftSize Optional custom FFT size (1024, 2048, 4096, 8192)
+     * @param hopFraction Hop size as fraction of FFT (default: 0.25 for 75% overlap)
+     */
+    computeSpectrogramWithConfig(
+        audio: CapturedAudio,
+        customFftSize?: 1024 | 2048 | 4096 | 8192,
+        hopFraction: number = 0.25
+    ): SpectrogramData {
+        const { samples, sampleRate } = audio;
+
+        // Use custom FFT size or fall back to default
+        const fftSize = customFftSize ?? this.fftSize;
+        const hopSize = Math.floor(fftSize * hopFraction);
+
+        // Temporarily update Meyda buffer size
+        const originalBufferSize = Meyda.bufferSize;
+        Meyda.bufferSize = fftSize;
+        Meyda.sampleRate = sampleRate;
+
+        const numFrames = Math.floor((samples.length - fftSize) / hopSize) + 1;
+        const numBins = fftSize / 2;
+        const magnitudes: Float32Array[] = [];
+        const times: number[] = [];
+        const frequencies: number[] = [];
+
+        // Calculate frequency bin centers
+        for (let i = 0; i < numBins; i++) {
+            frequencies.push((i * sampleRate) / fftSize);
+        }
+
+        debugLog(`Computing HiFi spectrogram: ${numFrames} frames, ${numBins} bins, FFT ${fftSize}, hop ${hopSize}`);
+
+        // Process each frame
+        for (let frame = 0; frame < numFrames; frame++) {
+            const startSample = frame * hopSize;
+            const endSample = startSample + fftSize;
+            const frameData = samples.slice(startSample, endSample);
+
+            // Extract amplitude spectrum using Meyda
+            const features = Meyda.extract(['amplitudeSpectrum'], frameData);
+            if (features && isArrayLike(features.amplitudeSpectrum)) {
+                magnitudes.push(new Float32Array(features.amplitudeSpectrum));
+            } else {
+                magnitudes.push(new Float32Array(numBins));
+            }
+
+            times.push((startSample / sampleRate) * 1000); // Time in ms
+        }
+
+        // Restore original buffer size
+        Meyda.bufferSize = originalBufferSize;
+
+        return {
+            magnitudes,
+            frequencies,
+            times,
+            fftSize,
+            hopSize,
+            sampleRate,
+            numBins,
+            numFrames
+        };
+    }
+
+    /**
      * Compute mel-spectrogram from audio data
      */
     computeMelSpectrogram(audio: CapturedAudio): MelSpectrogramData {
@@ -569,22 +636,42 @@ export class AudioAnalysisService {
         let spectralRolloffAvg = 0;
         let rmsAvg = 0;
 
+        // Track previous spectrum for flux calculation
+        let prevSpectrum: Float32Array | null = null;
+
         for (let frame = 0; frame < numFrames; frame++) {
             const startSample = frame * this.hopSize;
             const frameData = audio.samples.slice(startSample, startSample + this.fftSize);
 
+            // Extract features without spectralFlux (requires previous frame state)
             const features = Meyda.extract(
-                ['spectralCentroid', 'spectralFlatness', 'spectralFlux', 'spectralSpread', 'spectralRolloff', 'rms'],
+                ['spectralCentroid', 'spectralFlatness', 'spectralSpread', 'spectralRolloff', 'rms', 'amplitudeSpectrum'],
                 frameData
             );
 
             if (features) {
                 spectralCentroidAvg += features.spectralCentroid ?? 0;
                 spectralFlatnessAvg += features.spectralFlatness ?? 0;
-                spectralFluxAvg += features.spectralFlux ?? 0;
                 spectralSpreadAvg += features.spectralSpread ?? 0;
                 spectralRolloffAvg += features.spectralRolloff ?? 0;
                 rmsAvg += features.rms ?? 0;
+
+                // Calculate spectral flux manually
+                if (isArrayLike(features.amplitudeSpectrum)) {
+                    const currentSpectrum = new Float32Array(features.amplitudeSpectrum);
+                    if (prevSpectrum !== null) {
+                        let flux = 0;
+                        for (let i = 0; i < currentSpectrum.length && i < prevSpectrum.length; i++) {
+                            const diff = currentSpectrum[i] - prevSpectrum[i];
+                            if (diff > 0) {
+                                flux += diff;
+                            }
+                        }
+                        flux /= currentSpectrum.length;
+                        spectralFluxAvg += flux;
+                    }
+                    prevSpectrum = currentSpectrum;
+                }
             }
         }
 
