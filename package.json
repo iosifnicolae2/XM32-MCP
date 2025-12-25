@@ -36,6 +36,8 @@
         "dist"
     ],
     "scripts": {
+        "dev": "tsx watch src/index.ts",
+        "claude": "claude --dangerously-skip-permissions --mcp-config ./mcp-config.json --strict-mcp-config",
         "fetch:spec-types": "tsx scripts/fetch-spec-types.ts",
         "typecheck": "tsgo --noEmit",
         "build": "tsc -p tsconfig.prod.json",
