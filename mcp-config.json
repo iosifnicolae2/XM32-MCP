@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "x32": {
+            "command": "npx",
+            "args": ["tsx", "src/index.ts"],
+            "env": {
+                "MIXER_HOST": "192.168.0.50",
+                "MIXER_PORT": "10024",
+                "MIXER_TYPE": "XR18"
+            }
+        }
+    }
+}
