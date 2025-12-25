@@ -230,3 +230,8 @@ export function registerBusTools(server: McpServer, connection: X32Connection): 
 
 - Tests alongside source files with `.test.ts` suffix
 - Node.js >= 18 required
+
+# IMPORTANT
+Follow docs/X32-OSC.txt for reference on OSC address patterns and parameters for X32.
+Follow docs/XR18-OSC.txt for XR18 differences.
+
