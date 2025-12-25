@@ -5,3 +5,4 @@ export type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 export * from './x32.js';
 export * from './osc.js';
 export * from './device.js';
+export * from './audio.js';

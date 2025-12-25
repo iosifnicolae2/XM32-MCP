@@ -8,3 +8,4 @@ export { registerBusTools } from './bus.js';
 export { registerFxTools } from './fx.js';
 export { registerMainTools } from './main.js';
 export { registerParameterTools } from './parameter.js';
+export { registerAudioTools } from './audio.js';

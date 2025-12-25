@@ -8,7 +8,8 @@ import {
     registerBusTools,
     registerFxTools,
     registerMainTools,
-    registerParameterTools
+    registerParameterTools,
+    registerAudioTools
 } from './tools/index.js';
 
 /**
@@ -41,6 +42,7 @@ async function main() {
     registerFxTools(server, connection);
     registerMainTools(server, connection);
     registerParameterTools(server, connection);
+    registerAudioTools(server);
 
     // Setup connection event handlers
     connection.on('connected', () => {
@@ -114,6 +116,15 @@ async function main() {
     console.error('Low-level tools:');
     console.error('  - get_parameter: Get any parameter by OSC address');
     console.error('  - set_parameter: Set any parameter by OSC address');
+    console.error('');
+    console.error('Audio analysis tools:');
+    console.error('  - audio_list_devices: List available audio capture devices');
+    console.error('  - audio_analyze_spectrum: Full spectrum analysis with visualization');
+    console.error('  - audio_get_frequency_balance: Analyze frequency distribution');
+    console.error('  - audio_get_loudness: Measure RMS, peak, and dynamic range');
+    console.error('  - audio_analyze_brightness: Measure spectral centroid');
+    console.error('  - audio_analyze_harshness: Detect harsh frequencies');
+    console.error('  - audio_detect_masking: Detect frequency masking issues');
 
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
