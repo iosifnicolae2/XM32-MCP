@@ -27,17 +27,21 @@ MCP server for controlling Behringer X32/M32 digital mixing consoles via OSC pro
 The audio analysis tools require FFmpeg to be installed on your system:
 
 **macOS:**
+
 ```bash
 brew install ffmpeg
 ```
 
 **Windows:**
+
 ```bash
 choco install ffmpeg
 ```
+
 Or download from https://ffmpeg.org/download.html
 
 **Linux:**
+
 ```bash
 apt install ffmpeg
 ```
