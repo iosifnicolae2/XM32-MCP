@@ -108,8 +108,8 @@ export class AudioAnalysisService {
             const frameData = samples.slice(startSample, endSample);
 
             // Extract amplitude spectrum using Meyda
-            const features = Meyda.extract('amplitudeSpectrum', frameData);
-            if (features && features.amplitudeSpectrum) {
+            const features = Meyda.extract(['amplitudeSpectrum'], frameData);
+            if (features && Array.isArray(features.amplitudeSpectrum)) {
                 magnitudes.push(new Float32Array(features.amplitudeSpectrum));
             } else {
                 magnitudes.push(new Float32Array(numBins));
@@ -149,9 +149,9 @@ export class AudioAnalysisService {
             const frameData = samples.slice(startSample, endSample);
 
             // Meyda's melBands feature
-            const features = Meyda.extract('melBands', frameData);
-            if (features && features.melBands) {
-                melBands.push(new Float32Array(features.melBands as number[]));
+            const features = Meyda.extract(['melBands'], frameData);
+            if (features && Array.isArray(features.melBands)) {
+                melBands.push(new Float32Array(features.melBands));
             } else {
                 melBands.push(new Float32Array(this.numMelBands));
             }
@@ -200,8 +200,8 @@ export class AudioAnalysisService {
             const startSample = frame * this.hopSize;
             const frameData = samples.slice(startSample, startSample + this.fftSize);
 
-            const features = Meyda.extract('amplitudeSpectrum', frameData);
-            if (features?.amplitudeSpectrum) {
+            const features = Meyda.extract(['amplitudeSpectrum'], frameData);
+            if (features && Array.isArray(features.amplitudeSpectrum)) {
                 for (let i = 0; i < numBins && i < features.amplitudeSpectrum.length; i++) {
                     avgSpectrum[i] += features.amplitudeSpectrum[i];
                 }
@@ -241,8 +241,8 @@ export class AudioAnalysisService {
             const startSample = frame * this.hopSize;
             const frameData = samples.slice(startSample, startSample + this.fftSize);
 
-            const features = Meyda.extract('rms', frameData);
-            if (features?.rms !== undefined) {
+            const features = Meyda.extract(['rms'], frameData);
+            if (features && typeof features.rms === 'number') {
                 rmsSum += features.rms;
                 rmsMax = Math.max(rmsMax, features.rms);
                 rmsMin = Math.min(rmsMin, features.rms);
@@ -287,8 +287,8 @@ export class AudioAnalysisService {
             const startSample = frame * this.hopSize;
             const frameData = samples.slice(startSample, startSample + this.fftSize);
 
-            const features = Meyda.extract('spectralCentroid', frameData);
-            if (features?.spectralCentroid !== undefined) {
+            const features = Meyda.extract(['spectralCentroid'], frameData);
+            if (features && typeof features.spectralCentroid === 'number') {
                 // Meyda returns normalized centroid (0-1), convert to Hz
                 const centroidHz = (features.spectralCentroid * sampleRate) / 2;
                 centroids.push(centroidHz);
@@ -356,8 +356,8 @@ export class AudioAnalysisService {
             const startSample = frame * this.hopSize;
             const frameData = samples.slice(startSample, startSample + this.fftSize);
 
-            const features = Meyda.extract('spectralFlux', frameData);
-            if (features?.spectralFlux !== undefined) {
+            const features = Meyda.extract(['spectralFlux'], frameData);
+            if (features && typeof features.spectralFlux === 'number') {
                 fluxValues.push(features.spectralFlux);
             }
         }
@@ -420,8 +420,8 @@ export class AudioAnalysisService {
             const startSample = frame * this.hopSize;
             const frameData = samples.slice(startSample, startSample + this.fftSize);
 
-            const features = Meyda.extract('mfcc', frameData);
-            if (features?.mfcc) {
+            const features = Meyda.extract(['mfcc'], frameData);
+            if (features && Array.isArray(features.mfcc)) {
                 mfccFrames.push(features.mfcc);
             }
         }
