@@ -23,7 +23,7 @@ describe('X32Connection Tests', () => {
 
         test('should throw error when already connected', async () => {
             await connection.connect({ host: '10.69.6.254', port: 10023 });
-            await expect(connection.connect({ host: '10.69.6.254', port: 10023 })).rejects.toThrow('Already connected to X32/M32');
+            await expect(connection.connect({ host: '10.69.6.254', port: 10023 })).rejects.toThrow('Already connected to mixer');
         });
 
         test('should disconnect successfully', async () => {
@@ -78,7 +78,7 @@ describe('X32Connection Tests', () => {
 
         test('should throw error when getting info while disconnected', async () => {
             await connection.disconnect();
-            await expect(connection.getInfo()).rejects.toThrow('Not connected to X32/M32');
+            await expect(connection.getInfo()).rejects.toThrow('Not connected to mixer');
         });
     });
 
@@ -209,15 +209,15 @@ describe('X32Connection Tests', () => {
 
     describe('Error Handling', () => {
         test('should throw error when sending message while disconnected', async () => {
-            await expect(connection.sendMessage('/info')).rejects.toThrow('Not connected to X32/M32');
+            await expect(connection.sendMessage('/info')).rejects.toThrow('Not connected to mixer');
         });
 
         test('should throw error when getting parameter while disconnected', async () => {
-            await expect(connection.getParameter('/ch/01/mix/fader')).rejects.toThrow('Not connected to X32/M32');
+            await expect(connection.getParameter('/ch/01/mix/fader')).rejects.toThrow('Not connected to mixer');
         });
 
         test('should throw error when setting parameter while disconnected', async () => {
-            await expect(connection.setParameter('/ch/01/mix/fader', 0.5)).rejects.toThrow('Not connected to X32/M32');
+            await expect(connection.setParameter('/ch/01/mix/fader', 0.5)).rejects.toThrow('Not connected to mixer');
         });
     });
 });

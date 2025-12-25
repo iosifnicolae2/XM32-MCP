@@ -1,32 +1,86 @@
 // @ts-expect-error: OSC module lacks type definitions
 import osc from 'osc';
 import { EventEmitter } from 'events';
-import { X32ConnectionConfig, X32InfoResponse, X32StatusResponse, OscMessage, UDPPort } from '../types/index.js';
+import {
+    X32ConnectionConfig,
+    X32InfoResponse,
+    X32StatusResponse,
+    OscMessage,
+    UDPPort,
+    DeviceConfig,
+    DeviceType,
+    getDeviceConfig,
+    parseDeviceType,
+    X32_CONFIG
+} from '../types/index.js';
+
+// Debug logging (controlled by DEBUG env var)
+const DEBUG = process.env.DEBUG?.includes('mixer') || process.env.DEBUG?.includes('x32') || process.env.DEBUG === '*';
+const debugLog = (...args: unknown[]) => {
+    if (DEBUG) {
+        console.error('[Mixer]', ...args);
+    }
+};
 
 /**
- * X32 Connection Manager
- * Manages UDP connection to X32/M32 mixer
+ * Extended connection config with device type
+ */
+export interface MixerConnectionConfig extends X32ConnectionConfig {
+    deviceType?: DeviceType;
+}
+
+/**
+ * X32/XR18 Connection Manager
+ * Manages UDP connection to X32/M32/XR18/XR16/XR12 mixer
  */
 export class X32Connection extends EventEmitter {
     private udpPort: UDPPort | null = null;
-    private config: X32ConnectionConfig | null = null;
+    private config: MixerConnectionConfig | null = null;
     private isConnected: boolean = false;
     private messageQueue: Map<string, { resolve: (msg: OscMessage) => void; timeout: NodeJS.Timeout }> = new Map();
     private readonly DEFAULT_TIMEOUT = 5000; // 5 seconds
+    private _deviceConfig: DeviceConfig = X32_CONFIG; // Default to X32
 
     constructor() {
         super();
     }
 
     /**
-     * Connect to X32/M32 mixer
+     * Get the current device configuration
      */
-    async connect(config: X32ConnectionConfig): Promise<void> {
+    get deviceConfig(): DeviceConfig {
+        return this._deviceConfig;
+    }
+
+    /**
+     * Get the main output address for this device
+     * X32: /main/st
+     * XR18: /lr
+     */
+    get mainAddress(): string {
+        return this._deviceConfig.addresses.main;
+    }
+
+    /**
+     * Connect to X32/M32/XR18 mixer
+     */
+    async connect(config: MixerConnectionConfig): Promise<void> {
         if (this.isConnected) {
-            throw new Error('Already connected to X32/M32');
+            throw new Error('Already connected to mixer');
         }
 
         this.config = config;
+
+        // Set device configuration based on type
+        if (config.deviceType) {
+            this._deviceConfig = getDeviceConfig(config.deviceType);
+            debugLog(`Device type set to: ${config.deviceType}`);
+        } else {
+            // Try to get from environment
+            const envType = parseDeviceType(process.env.MIXER_TYPE);
+            this._deviceConfig = getDeviceConfig(envType);
+            debugLog(`Device type from env: ${envType}`);
+        }
 
         return new Promise((resolve, reject) => {
             this.udpPort = new osc.UDPPort({
@@ -44,6 +98,7 @@ export class X32Connection extends EventEmitter {
             });
 
             this.udpPort!.on('error', (err: Error) => {
+                debugLog(`UDP error:`, err.message);
                 this.emit('error', err);
                 if (!this.isConnected) {
                     reject(err);
@@ -51,6 +106,7 @@ export class X32Connection extends EventEmitter {
             });
 
             this.udpPort!.on('message', (oscMsg: unknown) => {
+                debugLog(`UDP 'message' event received`);
                 this.handleIncomingMessage(oscMsg as OscMessage);
             });
 
@@ -102,13 +158,17 @@ export class X32Connection extends EventEmitter {
             }
 
             if (waitForReply) {
+                debugLog(`Registering response handler for: ${address}`);
                 const timeout = setTimeout(() => {
+                    debugLog(`TIMEOUT: No response for ${address} after ${this.DEFAULT_TIMEOUT}ms`);
+                    debugLog(`Pending queue keys:`, Array.from(this.messageQueue.keys()));
                     this.messageQueue.delete(address);
                     reject(new Error(`Timeout waiting for response from ${address}`));
                 }, this.DEFAULT_TIMEOUT);
 
                 this.messageQueue.set(address, {
                     resolve: (msg: OscMessage) => {
+                        debugLog(`Response received for: ${address}`, msg);
                         clearTimeout(timeout);
                         this.messageQueue.delete(address);
                         resolve(msg);
@@ -118,22 +178,21 @@ export class X32Connection extends EventEmitter {
             }
 
             try {
-                this.udpPort.send({
-                    address,
-                    args: args.map(arg => {
-                        if (typeof arg === 'number') {
-                            if (Number.isInteger(arg)) {
-                                return { type: 'i', value: arg };
-                            }
-                            return { type: 'f', value: arg };
-                        } else if (typeof arg === 'string') {
-                            return { type: 's', value: arg };
-                        } else if (Buffer.isBuffer(arg)) {
-                            return { type: 'b', value: arg };
+                const oscArgs = args.map(arg => {
+                    if (typeof arg === 'number') {
+                        if (Number.isInteger(arg)) {
+                            return { type: 'i' as const, value: arg };
                         }
-                        return { type: 's', value: String(arg) };
-                    })
+                        return { type: 'f' as const, value: arg };
+                    } else if (typeof arg === 'string') {
+                        return { type: 's' as const, value: arg };
+                    } else if (Buffer.isBuffer(arg)) {
+                        return { type: 'b' as const, value: arg };
+                    }
+                    return { type: 's' as const, value: String(arg) };
                 });
+                debugLog(`Sending OSC: address=${address}, args=`, oscArgs);
+                this.udpPort.send({ address, args: oscArgs });
 
                 if (!waitForReply) {
                     resolve(null);
@@ -234,13 +293,14 @@ export class X32Connection extends EventEmitter {
 
     /**
      * Get channel parameter
-     * @param channel Channel number (1-32)
+     * @param channel Channel number (1-32 for X32, 1-16 for XR18)
      * @param param Parameter path (e.g., 'config/name', 'mix/fader')
      * @returns Parameter value
      */
     async getChannelParameter<T = unknown>(channel: number, param: string): Promise<T> {
-        if (channel < 1 || channel > 32) {
-            throw new Error('Channel must be between 1 and 32');
+        const maxChannels = this._deviceConfig.channels;
+        if (channel < 1 || channel > maxChannels) {
+            throw new Error(`Channel must be between 1 and ${maxChannels}`);
         }
         const ch = channel.toString().padStart(2, '0');
         return this.getParameter<T>(`/ch/${ch}/${param}`);
@@ -248,13 +308,14 @@ export class X32Connection extends EventEmitter {
 
     /**
      * Set channel parameter
-     * @param channel Channel number (1-32)
+     * @param channel Channel number (1-32 for X32, 1-16 for XR18)
      * @param param Parameter path (e.g., 'config/name', 'mix/fader')
      * @param value Value to set
      */
     async setChannelParameter(channel: number, param: string, value: unknown): Promise<void> {
-        if (channel < 1 || channel > 32) {
-            throw new Error('Channel must be between 1 and 32');
+        const maxChannels = this._deviceConfig.channels;
+        if (channel < 1 || channel > maxChannels) {
+            throw new Error(`Channel must be between 1 and ${maxChannels}`);
         }
         const ch = channel.toString().padStart(2, '0');
         await this.setParameter(`/ch/${ch}/${param}`, value);
@@ -262,13 +323,14 @@ export class X32Connection extends EventEmitter {
 
     /**
      * Get bus parameter
-     * @param bus Bus number (1-16)
+     * @param bus Bus number (1-16 for X32, 1-6 for XR18)
      * @param param Parameter path (e.g., 'mix/fader', 'mix/on')
      * @returns Parameter value
      */
     async getBusParameter<T = unknown>(bus: number, param: string): Promise<T> {
-        if (bus < 1 || bus > 16) {
-            throw new Error('Bus must be between 1 and 16');
+        const maxBuses = this._deviceConfig.buses;
+        if (bus < 1 || bus > maxBuses) {
+            throw new Error(`Bus must be between 1 and ${maxBuses}`);
         }
         const busNum = bus.toString().padStart(2, '0');
         return this.getParameter<T>(`/bus/${busNum}/${param}`);
@@ -276,33 +338,64 @@ export class X32Connection extends EventEmitter {
 
     /**
      * Set bus parameter
-     * @param bus Bus number (1-16)
+     * @param bus Bus number (1-16 for X32, 1-6 for XR18)
      * @param param Parameter path (e.g., 'mix/fader', 'mix/on')
      * @param value Value to set
      */
     async setBusParameter(bus: number, param: string, value: unknown): Promise<void> {
-        if (bus < 1 || bus > 16) {
-            throw new Error('Bus must be between 1 and 16');
+        const maxBuses = this._deviceConfig.buses;
+        if (bus < 1 || bus > maxBuses) {
+            throw new Error(`Bus must be between 1 and ${maxBuses}`);
         }
         const busNum = bus.toString().padStart(2, '0');
         await this.setParameter(`/bus/${busNum}/${param}`, value);
     }
 
     /**
+     * Get main output parameter
+     * Uses device-specific address (/main/st for X32, /lr for XR18)
+     * @param param Parameter path (e.g., 'mix/fader', 'eq/on')
+     * @returns Parameter value
+     */
+    async getMainParameter<T = unknown>(param: string): Promise<T> {
+        const address = `${this.mainAddress}/${param}`;
+        return this.getParameter<T>(address);
+    }
+
+    /**
+     * Set main output parameter
+     * Uses device-specific address (/main/st for X32, /lr for XR18)
+     * @param param Parameter path (e.g., 'mix/fader', 'eq/on')
+     * @param value Value to set
+     */
+    async setMainParameter(param: string, value: unknown): Promise<void> {
+        const address = `${this.mainAddress}/${param}`;
+        await this.setParameter(address, value);
+    }
+
+    /**
      * Handle incoming OSC message
      */
     private handleIncomingMessage(oscMsg: OscMessage): void {
+        debugLog(`RAW incoming message:`, JSON.stringify(oscMsg, null, 2));
+
         const message: OscMessage = {
             address: oscMsg.address,
             args: oscMsg.args || []
         };
+
+        debugLog(`Parsed message address: "${message.address}"`);
+        debugLog(`Current queue keys:`, Array.from(this.messageQueue.keys()));
 
         this.emit('message', message);
 
         // Check if there's a pending request for this address
         const queueItem = this.messageQueue.get(message.address);
         if (queueItem) {
+            debugLog(`Found matching queue item for: ${message.address}`);
             queueItem.resolve(message);
+        } else {
+            debugLog(`No queue item found for: "${message.address}"`);
         }
     }
 }

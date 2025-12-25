@@ -1,14 +1,24 @@
 import { EventEmitter } from 'events';
-import { X32ConnectionConfig, X32InfoResponse, X32StatusResponse, OscMessage } from '../../types/index.js';
+import {
+    X32ConnectionConfig,
+    X32InfoResponse,
+    X32StatusResponse,
+    OscMessage,
+    DeviceConfig,
+    getDeviceConfig,
+    X32_CONFIG
+} from '../../types/index.js';
+import { MixerConnectionConfig } from '../x32-connection.js';
 
 /**
  * Mock X32 Connection for Testing
- * Simulates X32/M32 mixer responses without requiring actual hardware
+ * Simulates X32/M32/XR18 mixer responses without requiring actual hardware
  */
 export class MockX32Connection extends EventEmitter {
     private isConnected: boolean = false;
-    private config: X32ConnectionConfig | null = null;
+    private config: MixerConnectionConfig | null = null;
     private parameterStore: Map<string, unknown> = new Map();
+    private _deviceConfig: DeviceConfig = X32_CONFIG;
     private readonly DEFAULT_INFO: X32InfoResponse = {
         serverVersion: 'V2.05',
         serverName: 'X32 Emulator',
@@ -27,6 +37,20 @@ export class MockX32Connection extends EventEmitter {
     }
 
     /**
+     * Get the current device configuration
+     */
+    get deviceConfig(): DeviceConfig {
+        return this._deviceConfig;
+    }
+
+    /**
+     * Get the main output address for this device
+     */
+    get mainAddress(): string {
+        return this._deviceConfig.addresses.main;
+    }
+
+    /**
      * Initialize default parameter values
      */
     private initializeDefaultParameters(): void {
@@ -39,7 +63,7 @@ export class MockX32Connection extends EventEmitter {
             this.parameterStore.set(`/ch/${channelNum}/mix/fader`, 0.75); // Unity gain
             this.parameterStore.set(`/ch/${channelNum}/mix/on`, 1); // Unmuted
             this.parameterStore.set(`/ch/${channelNum}/mix/pan`, 0.5); // Center
-            this.parameterStore.set(`/ch/${channelNum}/solo`, 0); // Not soloed
+            this.parameterStore.set(`/-stat/solosw/${channelNum}`, 0); // Not soloed
         }
 
         // Initialize default bus parameters (16 buses)
@@ -57,14 +81,19 @@ export class MockX32Connection extends EventEmitter {
     }
 
     /**
-     * Mock connection to X32/M32 mixer
+     * Mock connection to mixer
      */
-    async connect(config: X32ConnectionConfig): Promise<void> {
+    async connect(config: MixerConnectionConfig): Promise<void> {
         if (this.isConnected) {
-            throw new Error('Already connected to X32/M32');
+            throw new Error('Already connected to mixer');
         }
 
         this.config = config;
+
+        // Set device configuration based on type
+        if (config.deviceType) {
+            this._deviceConfig = getDeviceConfig(config.deviceType);
+        }
 
         // Simulate async connection
         await new Promise(resolve => setTimeout(resolve, 10));
@@ -74,7 +103,7 @@ export class MockX32Connection extends EventEmitter {
     }
 
     /**
-     * Mock disconnection from X32/M32 mixer
+     * Mock disconnection from mixer
      */
     async disconnect(): Promise<void> {
         if (!this.isConnected) {
@@ -94,7 +123,7 @@ export class MockX32Connection extends EventEmitter {
      */
     async sendMessage(address: string, args: unknown[] = [], waitForReply: boolean = true): Promise<OscMessage | null> {
         if (!this.isConnected) {
-            throw new Error('Not connected to X32/M32');
+            throw new Error('Not connected to mixer');
         }
 
         // Simulate network delay
@@ -136,11 +165,11 @@ export class MockX32Connection extends EventEmitter {
     }
 
     /**
-     * Mock get X32/M32 info
+     * Mock get mixer info
      */
     async getInfo(): Promise<X32InfoResponse> {
         if (!this.isConnected) {
-            throw new Error('Not connected to X32/M32');
+            throw new Error('Not connected to mixer');
         }
 
         // Simulate network delay
@@ -150,11 +179,11 @@ export class MockX32Connection extends EventEmitter {
     }
 
     /**
-     * Mock get X32/M32 status
+     * Mock get mixer status
      */
     async getStatus(): Promise<X32StatusResponse> {
         if (!this.isConnected) {
-            throw new Error('Not connected to X32/M32');
+            throw new Error('Not connected to mixer');
         }
 
         // Simulate network delay
@@ -201,8 +230,9 @@ export class MockX32Connection extends EventEmitter {
      * Mock get channel parameter
      */
     async getChannelParameter<T = unknown>(channel: number, param: string): Promise<T> {
-        if (channel < 1 || channel > 32) {
-            throw new Error('Channel must be between 1 and 32');
+        const maxChannels = this._deviceConfig.channels;
+        if (channel < 1 || channel > maxChannels) {
+            throw new Error(`Channel must be between 1 and ${maxChannels}`);
         }
         const ch = channel.toString().padStart(2, '0');
         return this.getParameter<T>(`/ch/${ch}/${param}`);
@@ -212,8 +242,9 @@ export class MockX32Connection extends EventEmitter {
      * Mock set channel parameter
      */
     async setChannelParameter(channel: number, param: string, value: unknown): Promise<void> {
-        if (channel < 1 || channel > 32) {
-            throw new Error('Channel must be between 1 and 32');
+        const maxChannels = this._deviceConfig.channels;
+        if (channel < 1 || channel > maxChannels) {
+            throw new Error(`Channel must be between 1 and ${maxChannels}`);
         }
         const ch = channel.toString().padStart(2, '0');
         await this.setParameter(`/ch/${ch}/${param}`, value);
@@ -223,8 +254,9 @@ export class MockX32Connection extends EventEmitter {
      * Mock get bus parameter
      */
     async getBusParameter<T = unknown>(bus: number, param: string): Promise<T> {
-        if (bus < 1 || bus > 16) {
-            throw new Error('Bus must be between 1 and 16');
+        const maxBuses = this._deviceConfig.buses;
+        if (bus < 1 || bus > maxBuses) {
+            throw new Error(`Bus must be between 1 and ${maxBuses}`);
         }
         const busNum = bus.toString().padStart(2, '0');
         return this.getParameter<T>(`/bus/${busNum}/${param}`);
@@ -234,11 +266,28 @@ export class MockX32Connection extends EventEmitter {
      * Mock set bus parameter
      */
     async setBusParameter(bus: number, param: string, value: unknown): Promise<void> {
-        if (bus < 1 || bus > 16) {
-            throw new Error('Bus must be between 1 and 16');
+        const maxBuses = this._deviceConfig.buses;
+        if (bus < 1 || bus > maxBuses) {
+            throw new Error(`Bus must be between 1 and ${maxBuses}`);
         }
         const busNum = bus.toString().padStart(2, '0');
         await this.setParameter(`/bus/${busNum}/${param}`, value);
+    }
+
+    /**
+     * Get main output parameter
+     */
+    async getMainParameter<T = unknown>(param: string): Promise<T> {
+        const address = `${this.mainAddress}/${param}`;
+        return this.getParameter<T>(address);
+    }
+
+    /**
+     * Set main output parameter
+     */
+    async setMainParameter(param: string, value: unknown): Promise<void> {
+        const address = `${this.mainAddress}/${param}`;
+        await this.setParameter(address, value);
     }
 
     /**
