@@ -9,23 +9,25 @@ Professional compressor settings for speech/sermon delivery on Behringer XR18/X3
 
 ## Quick Start - Recommended Preset
 
-**#2 Greg Wells Natural** - Fat, present, not choked:
+**Optimized Room-Friendly Compression** - Transparent control without bringing up room reflections:
 
 | Parameter | Value | OSC Address | OSC Value |
 |-----------|-------|-------------|-----------|
 | Mode | COMP | `/ch/01/dyn/mode` | 0 |
 | Detection | RMS | `/ch/01/dyn/det` | 1 |
 | Envelope | LOG | `/ch/01/dyn/env` | 1 |
-| Threshold | -35 dB | `/ch/01/dyn/thr` | 0.417 |
-| Ratio | 2.5:1 | `/ch/01/dyn/ratio` | 4 |
-| Knee | Very Soft (5) | `/ch/01/dyn/knee` | 1 |
-| Attack | 25 ms | `/ch/01/dyn/attack` | 0.208 |
-| Release | 60 ms | `/ch/01/dyn/release` | 0.372 |
-| Makeup Gain | +4 dB | `/ch/01/dyn/mgain` | 0.167 |
+| Threshold | -25 dB | `/ch/01/dyn/thr` | 0.583 |
+| Ratio | 3:1 | `/ch/01/dyn/ratio` | 5 |
+| Knee | Medium-Soft | `/ch/01/dyn/knee` | 0.4 |
+| Attack | 15 ms | `/ch/01/dyn/attack` | 0.125 |
+| Release | 200 ms | `/ch/01/dyn/release` | 0.05 |
+| Makeup Gain | +2 dB | `/ch/01/dyn/mgain` | 0.083 |
 | Mix | 100% | `/ch/01/dyn/mix` | 90 (use integer!) |
 | On | ON | `/ch/01/dyn/on` | 1 |
 
-**Key characteristics:** Slow attack preserves transients, fast release provides immediate response. "Fat and loud without being choked."
+**Key characteristics:** Higher threshold prevents over-compression, faster release (200ms vs 1400ms+) prevents room reflections from being amplified during gain recovery, minimal makeup gain keeps noise floor low.
+
+**Problem solved:** Long release times cause the compressor to slowly bring up gain after loud passages, which amplifies room reflections and ambient noise. The 200ms release recovers quickly without pumping.
 
 ## OSC Commands to Apply (Channel 1)
 
@@ -34,16 +36,63 @@ Professional compressor settings for speech/sermon delivery on Behringer XR18/X3
 /ch/01/dyn/mode 0
 /ch/01/dyn/det 1
 /ch/01/dyn/env 1
-/ch/01/dyn/thr 0.417
-/ch/01/dyn/ratio 4
-/ch/01/dyn/knee 1
-/ch/01/dyn/attack 0.208
-/ch/01/dyn/release 0.372
-/ch/01/dyn/mgain 0.167
+/ch/01/dyn/thr 0.583
+/ch/01/dyn/ratio 5
+/ch/01/dyn/knee 0.4
+/ch/01/dyn/attack 0.125
+/ch/01/dyn/release 0.05
+/ch/01/dyn/mgain 0.083
 /ch/01/dyn/mix 90
 ```
 
 **IMPORTANT:** Mix parameter requires integer value (90 = 100%). Using 1.0 causes a bug setting it to 2%.
+
+---
+
+## Noise Gate for Speech (Expert-Recommended)
+
+Professional broadcast-style gate settings based on [Black Ghost Audio](https://www.blackghostaudio.com/blog/how-to-use-a-gate-perfect-dialog-settings-in-5-steps) and [Behind The Mixer](https://www.behindthemixer.com/audio-gating-guide/) recommendations.
+
+**Key principle:** "Noise reduction, not noise removal" - aggressive gates cause choppy audio.
+
+| Parameter | Value | OSC Address | OSC Value |
+|-----------|-------|-------------|-----------|
+| On | ON | `/ch/01/gate/on` | 1 |
+| Threshold | -53 dB | `/ch/01/gate/thr` | 0.34 |
+| Range | 9 dB | `/ch/01/gate/range` | 0.105 |
+| Attack | 3 ms | `/ch/01/gate/attack` | 0.025 |
+| Hold | 600 ms | `/ch/01/gate/hold` | 0.3 |
+| Release | 200 ms | `/ch/01/gate/release` | 0.05 |
+
+### Gate OSC Commands
+
+```
+/ch/01/gate/on 1
+/ch/01/gate/thr 0.34
+/ch/01/gate/range 0.105
+/ch/01/gate/attack 0.025
+/ch/01/gate/hold 0.3
+/ch/01/gate/release 0.05
+```
+
+### Gate Parameter Guidelines
+
+| Parameter | Recommended | Why |
+|-----------|-------------|-----|
+| Threshold | Just above noise floor | Set -53dB if noise floor is -54dB |
+| Range | 8-10 dB | Gentle reduction, not hard cut |
+| Attack | 1-5 ms | Fast open to catch word starts |
+| Hold | 500-800 ms | Prevents chattering between words |
+| Release | 100-300 ms | Natural fade, not abrupt cutoff |
+
+### Common Gate Problems
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| Choppy audio | Range too high, threshold too high | Reduce range to 8-10dB, lower threshold |
+| Words cut off | Hold too short, release too fast | Increase hold to 600ms+, release to 200ms+ |
+| No effect | Threshold too low | Raise threshold above noise floor |
+| Pumping | Threshold near speech level | Lower threshold, use gentler range |
 
 ---
 

@@ -404,6 +404,69 @@ Create pocket: Apply -2dB notch in bass at kick's fundamental (e.g., 60Hz Q=3)
 
 ---
 
+## OSC get_parameter Timeout Errors
+
+**Some OSC addresses timeout when queried with `get_parameter` but work fine with `set_parameter`.**
+
+### Known Timeout Addresses
+
+| Address Pattern | Description | Workaround |
+|-----------------|-------------|------------|
+| `/ch/XX/mix/YY/on` | Send on/off status | Use `set_parameter` directly, or query `/level` |
+| `/ch/XX/mix/YY/grpon` | Send group on | Use `set_parameter` directly |
+| `/ch/XX/preamp/pol` | Polarity (wrong address) | Use `/ch/XX/preamp/invert` instead |
+
+### Addresses That Work Reliably
+
+| Address Pattern | Description |
+|-----------------|-------------|
+| `/ch/XX/mix/YY/level` | Send level |
+| `/ch/XX/mix/YY/tap` | Send tap point |
+| `/ch/XX/preamp/invert` | Polarity invert |
+| `/ch/XX/eq/N/f`, `/g`, `/q` | EQ parameters |
+| `/ch/XX/dyn/*` | Dynamics parameters |
+| `/ch/XX/gate/*` | Gate parameters |
+
+### Best Practices
+
+1. **Prefer `set_parameter` for writing** - Always works, no timeout risk
+2. **Query adjacent parameters** - If `/on` times out, query `/level` instead
+3. **Check XR18-OSC.txt** - Verify correct address syntax before querying
+4. **Use semantic tools when available** - They handle address mapping internally
+
+### Example Workarounds
+
+```
+# PROBLEM: This times out
+get_parameter address="/ch/07/mix/10/on"
+# Error: Timeout waiting for response from /ch/07/mix/10/on
+
+# SOLUTION 1: Use set_parameter directly (write-only)
+set_parameter address="/ch/07/mix/10/on", value=1
+
+# SOLUTION 2: Query the level instead (readable)
+get_parameter address="/ch/07/mix/10/level"
+
+# PROBLEM: Wrong polarity address
+get_parameter address="/ch/06/preamp/pol"
+# Error: Timeout
+
+# SOLUTION: Use correct address
+get_parameter address="/ch/06/preamp/invert"
+# Returns: 0 (normal) or 1 (inverted)
+```
+
+### Why Timeouts Happen
+
+The XR18/X32 OSC implementation has some addresses that:
+- Are write-only (no response to queries)
+- Have different syntax than documented
+- Respond slower than the default timeout
+
+**When in doubt:** Use `set_parameter` to write values directly, and verify by ear or visual confirmation on the mixer.
+
+---
+
 ## OSC Parameter Conversion Reference
 
 **CRITICAL: The XR18/X32 uses normalized 0.0-1.0 values for all parameters. DO NOT pass raw Hz/dB values to semantic tools - use `set_parameter` with normalized values instead.**
